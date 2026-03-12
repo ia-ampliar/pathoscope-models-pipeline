@@ -1,0 +1,12 @@
+# Datas
+/datas
+/home/ampliar/Desktop/tf_model/models/*.tflite
+
+#Output
+/output
+/results
+/img_test
+
+
+# Logs/logs
+/logs

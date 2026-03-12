@@ -1,0 +1,22 @@
+name: qat_tf_env
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.9
+  - pip
+  - numpy=1.23.*
+  - scipy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - pillow
+  - h5py
+  - cudatoolkit=11.2  
+  - cudnn=8.1        
+
+  - pip:
+      - tensorflow==2.10.1
+      - tensorflow-estimator==2.10.0
+      - tensorflow-model-optimization==0.7.5

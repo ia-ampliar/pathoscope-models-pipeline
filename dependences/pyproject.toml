@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ml-train-pipeline"
+version = "0.1.0"
+description = "Exemplo de pipeline de treinamento e inferência em Python usando layout src/."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Fernando Alves" }
+]
+dependencies = [
+  "numpy>=1.23.5,<2.0.0",
+  "pandas>=2.0",
+  "scikit-learn>=1.3",
+  "joblib>=1.3",
+  "openslide-python",
+  "tensorflow==2.17.0",
+  "opencv-python",
+  "pillow",
+  "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "black>=24.0",
+  "ruff>=0.6",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

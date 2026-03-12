@@ -1,0 +1,28 @@
+# Diretorios de testes e images locais
+img_test/
+output/
+results/
+
+# Arquivos de configuração e scripts
+*.py    
+
+# Ignorar arquivos de log e checkpoints
+logs/
+checkpoints/
+.ipynb_checkpoints/
+
+# Saidas e metricas locais 
+*.csv
+*.json
+
+# Arquivos de ambiente e dependencias
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.tmp
+
+# Configs locais e de IDEs
+.vscode/
+.idea/
