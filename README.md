@@ -71,6 +71,20 @@ python -m scripts.train --no-strategy
 python -m scripts.train --no-qat
 ```
 
+- **Rodar forçando somente CPU (evitar erros de CUDA/GPU)**:
+
+  Se você estiver em uma máquina com GPU muito nova ou com incompatibilidade de driver/CUDA, pode forçar o TensorFlow a ignorar a GPU usando a variável de ambiente `CUDA_VISIBLE_DEVICES`:
+
+  ```bash
+  CUDA_VISIBLE_DEVICES="" python -m scripts.train
+  ```
+
+  Ou, se quiser desabilitar QAT enquanto testa:
+
+  ```bash
+  CUDA_VISIBLE_DEVICES="" python -m scripts.train --no-qat
+  ```
+
 ### Etapas do pipeline
 
 - **1. Carregamento de dados (`dataloader.py`)**
