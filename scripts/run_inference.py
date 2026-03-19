@@ -453,7 +453,16 @@ def _process_patch(abs_y, abs_x):
     return None
 
 
-def run(image_path: str | None = None):
+def run(image_path: str | None = None, output_mode: str | None = None):
+    """
+    Executa a inferência e gera:
+    - heatmap matrix (sempre em NPZ quando output_mode != None? ver lógica abaixo)
+    - imagem sobreposta (somente quando output_mode == "overlay")
+
+    output_mode:
+      - "overlay": salva NPZ + gera heatmap e imagem sobreposta (JPG)
+      - "matrix_only": salva apenas NPZ (sem JPGs)
+    """
     global THRESHOLD, patch_size, width, hight, dz_level, dz_cols, dz_rows, mask, indices
 
     # Seleciona caminho da imagem
@@ -470,6 +479,12 @@ def run(image_path: str | None = None):
 
     if not os.path.exists(TFLITE_PATH):
         raise FileNotFoundError(f"Modelo TFLite não encontrado em TFLITE_PATH='{TFLITE_PATH}'")
+
+    if output_mode is None:
+        output_mode = os.getenv("OUTPUT_HEATMAP_MODE", "overlay")
+    output_mode = str(output_mode).strip().lower()
+    if output_mode not in {"overlay", "matrix_only"}:
+        raise ValueError("output_mode inválido. Use 'overlay' ou 'matrix_only'.")
 
     if PREPROC_MACENKO_TEMPLATE_PATH and not os.path.exists(PREPROC_MACENKO_TEMPLATE_PATH):
         print(f"[WARNING] Macenko template não encontrado em '{PREPROC_MACENKO_TEMPLATE_PATH}'. "
@@ -587,6 +602,10 @@ def run(image_path: str | None = None):
 
     heatmap_path = os.path.join(image_output_dir, f"hm_{base}_qat.jpg")
     superimposed_path = os.path.join(image_output_dir, f"superimposed_{base}_qat.jpg")
+    npz_path = os.path.join(
+        image_output_dir,
+        f"heatmap_matrix_{image_id}_{base}_qat.npz",
+    )
 
     metrics = {
         "image": base,
@@ -606,6 +625,29 @@ def run(image_path: str | None = None):
     metrics_path = os.path.join(image_output_dir, f"metrics_{base}_qat.json")
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=4, ensure_ascii=False)
+
+    # ====== salvar matriz NPZ (para envio via requisição) ======
+    # Mantemos os mesmos metadados básicos para permitir reconstrução offline.
+    np.savez_compressed(
+        npz_path,
+        jet_heatmap_matrix=jet_heatmap_matrix,
+        image_id=image_id,
+        base=base,
+        patch_size=np.array(patch_size, dtype=np.int32),
+        overlay_level=np.array(overlay_level, dtype=np.int32),
+        width=np.array(width, dtype=np.int32),
+        hight=np.array(hight, dtype=np.int32),
+        threshold=np.array(threshold, dtype=np.float32),
+        input_normalization=np.array(input_normalization),
+        output_mode=np.array(output_mode),
+    )
+
+    print(f"Heatmap matrix (NPZ) salvo em: {npz_path}")
+
+    # Se solicitado apenas a matriz, não geramos imagens sobrepostas/heatmap JPG.
+    if output_mode == "matrix_only":
+        print(f"Modo 'matrix_only': sem geração de JPGs (heatmap/superimposed).")
+        return
 
     heatmap_matrix = np.uint8(255 * jet_heatmap_matrix)
     jet_colors = cm.get_cmap("jet")(np.arange(256))[:, :3]

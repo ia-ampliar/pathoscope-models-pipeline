@@ -1,0 +1,14 @@
+# Docker Compose para inferência de histopatologia
+# Configuração centralizada: crie .env a partir de .env.example e rode docker compose up
+
+services:
+  inference:
+    image: histology-model-inference:latest
+    container_name: histology-inference
+    environment:
+      - IMAGE_PATH=${IMAGE_PATH:-/data/TCGA-BR-7197-01A-01-BS1.2fbf309e-bb43-49d2-aae9-b3016a520722.svs}
+      - OUTPUT_HEATMAP_MODE=${OUTPUT_HEATMAP_MODE:-matrix_only}
+    volumes:
+      - ${DATA_DIR:-./img_test/cancer}:/data:ro
+      - ${OUTPUT_DIR:-./output}:/app/output
+    restart: "no"
