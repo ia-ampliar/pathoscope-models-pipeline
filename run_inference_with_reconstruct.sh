@@ -36,17 +36,11 @@ OUTPUT_HEATMAP_MODE="${OUTPUT_HEATMAP_MODE:-matrix_only}"
 DATA_DIR_ABS="$(cd "${DATA_DIR}" 2>/dev/null && pwd || echo "${SCRIPT_DIR}/${DATA_DIR}")"
 OUTPUT_DIR_ABS="$(mkdir -p "${OUTPUT_DIR}" && cd "${OUTPUT_DIR}" && pwd)"
 
-# Determina UID/GID do usuário atual (evita Permission denied nos artefatos)
-# No Linux: arquivos criados no volume terão ownership do host
-# No Windows/Mac: id pode não existir, usa fallback
-DOCKER_USER=""
-if command -v id >/dev/null 2>&1; then
-  _uid="$(id -u 2>/dev/null || true)"
-  _gid="$(id -g 2>/dev/null || true)"
-  if [[ -n "${_uid:-}" && -n "${_gid:-}" && "${_uid}" != "0" ]]; then
-    DOCKER_USER="-u ${_uid}:${_gid}"
-  fi
-fi
+# Garante que o diretório de saída seja gravável pelo container.
+# Volumes montados podem herdar permissões que impedem escrita quando o container
+# roda com -u (não-root). Rodamos como root para evitar Permission denied.
+# Se os arquivos ficarem com ownership root no host, use: chmod -R a+rw output/
+chmod 777 "${OUTPUT_DIR_ABS}" 2>/dev/null || true
 
 echo "[INFO] DATA_DIR: ${DATA_DIR_ABS}"
 echo "[INFO] OUTPUT_DIR: ${OUTPUT_DIR_ABS}"
@@ -83,7 +77,6 @@ fi
 
 echo "[1/2] Executando inferência no Docker (gera NPZ)..."
 docker run --rm \
-  ${DOCKER_USER} \
   -e "IMAGE_PATH=${IMAGE_IN_CONTAINER}" \
   -e "OUTPUT_HEATMAP_MODE=${OUTPUT_HEATMAP_MODE}" \
   -e "OUTPUT_DIR=/app/output" \
@@ -160,7 +153,6 @@ print(str(d['base']))
   img_parent="$(cd "$(dirname "${image_host}")" && pwd)"
 
   docker run --rm \
-    ${DOCKER_USER} \
     -v "${img_parent}:/data:ro" \
     -v "${OUTPUT_DIR_ABS}:/app/output" \
     -w /app \
