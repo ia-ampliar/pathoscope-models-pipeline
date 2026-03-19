@@ -153,11 +153,12 @@ print(str(d['base']))
   img_parent="$(cd "$(dirname "${image_host}")" && pwd)"
 
   docker run --rm \
+    --entrypoint python \
     -v "${img_parent}:/data:ro" \
     -v "${OUTPUT_DIR_ABS}:/app/output" \
     -w /app \
     "${DOCKER_IMAGE}" \
-    python scripts/heatmap_reconstruct_from_npz.py \
+    scripts/heatmap_reconstruct_from_npz.py \
       --npz_path "${npz_container}" \
       --image_path "${image_container}" \
       --output_dir "/app/output"
