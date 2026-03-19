@@ -16,6 +16,8 @@ Este projeto organiza o fluxo experimental do notebook `train-pipeline.ipynb` em
   - `modeling.py`: definição da arquitetura MobileNetV2 + topo denso.
   - `train_utils.py`: funções genéricas de treino, callbacks, salvamento de histórico e gráficos.
   - `qat.py`: funções específicas de Quantization Aware Training e exportação para TFLite.
+- **src/**:
+  - `infer.py`: ponto de entrada para inferência (Docker/local).
   - `train.py`: orquestra o pipeline completo (baseline, fine-tune, avaliação e QAT).
 - **environment.yml**: ambiente de **treino** (TensorFlow 2.10.1 + TF-MOT, CUDA 11.2).
 - **dependences/environment.yml**: ambiente de **inferência** (TensorFlow 2.17.0 + libs de produção, mantido isolado).
@@ -54,7 +56,7 @@ Com o ambiente de treino (`qat_tf_env`) ativado e os CSVs em `split/` preparados
 
 ```bash
 cd TF_MODEL
-python -m scripts.train
+python -m src.train
 ```
 
 Opções adicionais:
@@ -62,13 +64,13 @@ Opções adicionais:
 - **Desabilitar MirroredStrategy** (forçar treino em um único dispositivo):
 
 ```bash
-python -m scripts.train --no-strategy
+python -m src.train --no-strategy
 ```
 
 - **Desabilitar QAT** (rodar somente baseline + fine-tune FP32):
 
 ```bash
-python -m scripts.train --no-qat
+python -m src.train --no-qat
 ```
 
 - **Rodar forçando somente CPU (evitar erros de CUDA/GPU)**:
@@ -76,13 +78,13 @@ python -m scripts.train --no-qat
   Se você estiver em uma máquina com GPU muito nova ou com incompatibilidade de driver/CUDA, pode forçar o TensorFlow a ignorar a GPU usando a variável de ambiente `CUDA_VISIBLE_DEVICES`:
 
   ```bash
-  CUDA_VISIBLE_DEVICES="" python -m scripts.train
+  CUDA_VISIBLE_DEVICES="" python -m src.train
   ```
 
   Ou, se quiser desabilitar QAT enquanto testa:
 
   ```bash
-  CUDA_VISIBLE_DEVICES="" python -m scripts.train --no-qat
+  CUDA_VISIBLE_DEVICES="" python -m src.train --no-qat
   ```
 
 ### Etapas do pipeline
@@ -133,6 +135,24 @@ python -m scripts.train --no-qat
 - O ambiente de treino (`qat_tf_env`) é totalmente separado do ambiente de inferência (`inference-env` em `dependences/environment.yml`), evitando conflitos de versões do TensorFlow e de bibliotecas de sistema.
 - Para pipelines de inferência, use apenas o ambiente de produção (`inference-env`) e os artefatos em `models/` (principalmente o `.tflite`).
 
+### Fluxo completo de inferência + reconstrução
+
+O script `run_inference_with_reconstruct.sh` executa todo o fluxo: inferência no Docker (gera NPZ) e reconstrução da imagem sobreposta a partir do NPZ. Os artefatos são salvos no diretório local com permissões corretas (evita `Permission denied`).
+
+**Pré-requisitos**: Docker, imagem `histology-model-inference:latest` construída.
+
+**Uso**:
+
+```bash
+# Com .env configurado (IMAGE_PATH, DATA_DIR, OUTPUT_DIR)
+./run_inference_with_reconstruct.sh
+
+# Ou passando a imagem como argumento
+./run_inference_with_reconstruct.sh /caminho/para/imagem.svs
+```
+
+O script usa `-u $(id -u):$(id -g)` no Docker para que os arquivos gerados tenham o ownership do usuário do host, permitindo operações locais (copy, remove, reconstruir) sem restrições.
+
 ### Como usar com Docker
 
 Abaixo está um fluxo completo para empacotar o **pipeline de treinamento** em uma imagem Docker e executá-lo de forma reprodutível.
@@ -163,7 +183,7 @@ ENV PATH=/opt/conda/envs/qat_tf_env/bin:$PATH
 COPY . .
 
 # Comando padrão: rodar o pipeline de treinamento
-CMD ["python", "-m", "scripts.train"]
+CMD ["python", "-m", "src.train"]
 ```
 
 > **Observação**: o `Dockerfile` acima é voltado para o **ambiente de treino**. O ambiente de inferência (`dependences/environment.yml`) continua isolado e pode ter outro `Dockerfile` específico, se necessário.
@@ -192,7 +212,7 @@ docker images tf-model-train
 
 #### 3. Executando o treinamento dentro do container
 
-Para rodar o pipeline de treinamento conforme definido em `scripts/train.py`:
+Para rodar o pipeline de treinamento conforme definido em `src/train.py`:
 
 ```bash
 docker run --rm \
@@ -232,7 +252,7 @@ docker run --rm \
   -v /caminho/para/models:/workspace/models \
   -v /caminho/para/metrics:/workspace/metrics \
   tf-model-train:latest \
-  python -m scripts.train --no-qat
+  python -m src.train --no-qat
 ```
 
 De forma análoga, você pode adicionar `--no-strategy` se quiser forçar treino em um único dispositivo dentro do container.

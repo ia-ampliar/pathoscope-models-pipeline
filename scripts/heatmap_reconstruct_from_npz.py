@@ -29,6 +29,23 @@ from matplotlib import cm
 from PIL import Image
 
 
+def _check_writable(directory: str) -> None:
+    """Verifica se o diretório permite escrita. Levanta PermissionError com mensagem útil."""
+    test_file = os.path.join(directory, ".write_test")
+    try:
+        with open(test_file, "w") as f:
+            f.write("")
+        os.remove(test_file)
+    except PermissionError as e:
+        raise PermissionError(
+            f"Sem permissão de escrita em '{directory}'. "
+            "Possíveis soluções:\n"
+            "  1. Use --output_dir com um diretório onde você tem permissão (ex: /tmp ou ~/output)\n"
+            "  2. Ajuste as permissões: chmod -R u+w <output_dir>\n"
+            "  3. Se estiver em Docker, verifique o ownership do volume montado"
+        ) from e
+
+
 def _derive_image_id_and_base(image_path: str) -> tuple[str, str]:
     base = os.path.splitext(os.path.basename(image_path))[0]
     image_id = base.split(".", 1)[0]
@@ -65,6 +82,9 @@ def reconstruct_overlay_from_npz(
     image_output_dir = os.path.join(output_dir, f"{image_id}_results")
     os.makedirs(image_output_dir, exist_ok=True)
 
+    # Verifica permissão de escrita antes do processamento pesado
+    _check_writable(image_output_dir)
+
     # ====== reconstrói heatmap da matriz ======
     jet_heatmap_matrix_f16 = np.asarray(jet_heatmap_matrix, dtype=np.float16)
     # Mesma conversão usada no run_inference.py: escala por 255 e faz cast para uint8.
@@ -90,7 +110,14 @@ def reconstruct_overlay_from_npz(
     superimposed_img = tf.keras.utils.array_to_img(superimposed_img)
 
     out_path = os.path.join(image_output_dir, f"superimposed_{base}_qat.jpg")
-    superimposed_img.save(out_path, quality=100)
+    try:
+        superimposed_img.save(out_path, quality=100)
+    except PermissionError as e:
+        raise PermissionError(
+            f"Não foi possível salvar em '{out_path}'. "
+            "Use --output_dir com um diretório onde você tem permissão de escrita "
+            "(ex: /tmp ou um diretório no seu home)."
+        ) from e
     return Path(out_path)
 
 

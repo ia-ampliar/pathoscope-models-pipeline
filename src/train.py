@@ -3,11 +3,11 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
-from . import config
-from . import dataloader
-from . import modeling
-from . import train_utils
-from . import qat
+from scripts import config
+from scripts import dataloader
+from scripts import modeling
+from scripts import train_utils
+from scripts import qat
 
 
 def set_global_seed():
@@ -137,4 +137,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
