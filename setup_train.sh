@@ -4,18 +4,18 @@ set -euo pipefail
 
 # Diretório raiz do projeto (TF_MODEL)
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${PROJECT_DIR}/environment.yml"
+ENV_FILE="${PROJECT_DIR}/dependences/train_environment.yml"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
-  echo "Arquivo environment.yml não encontrado em ${ENV_FILE}."
+  echo "Arquivo dependences/train_environment.yml não encontrado em ${ENV_FILE}."
   exit 1
 fi
 
-# Nome do ambiente definido no environment.yml
+# Nome do ambiente definido no dependences/train_environment.yml
 ENV_NAME="$(grep '^name:' "${ENV_FILE}" | awk '{print $2}')"
 
 if [[ -z "${ENV_NAME}" ]]; then
-  echo "Não foi possível determinar o nome do ambiente a partir de environment.yml."
+  echo "Não foi possível determinar o nome do ambiente a partir de dependences/train_environment.yml."
   exit 1
 fi
 
@@ -32,10 +32,10 @@ fi
 eval "$(conda shell.bash hook)"
 
 if conda env list | grep -q "^${ENV_NAME} "; then
-  echo "Ambiente ${ENV_NAME} já existe. Atualizando a partir de environment.yml..."
+  echo "Ambiente ${ENV_NAME} já existe. Atualizando a partir de dependences/train_environment.yml..."
   conda env update -n "${ENV_NAME}" -f "${ENV_FILE}" --prune
 else
-  echo "Criando ambiente de treino ${ENV_NAME} a partir de environment.yml..."
+  echo "Criando ambiente de treino ${ENV_NAME} a partir de dependences/train_environment.yml..."
   conda env create -f "${ENV_FILE}"
 fi
 
@@ -46,5 +46,5 @@ echo
 echo "    conda activate ${ENV_NAME}"
 echo
 echo "Importante: este ambiente é apenas para TREINAMENTO."
-echo "O ambiente de INFERÊNCIA permanece isolado em './dependences/environment.yml'."
+echo "O ambiente de INFERÊNCIA permanece isolado em './dependences/dependences/train_environment.yml'."
 

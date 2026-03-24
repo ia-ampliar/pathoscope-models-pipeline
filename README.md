@@ -5,13 +5,14 @@ Este projeto organiza o fluxo experimental do notebook `train-pipeline.ipynb` em
 ### Estrutura de diretórios
 
 - **Datas/**: imagens de entrada usadas no treinamento.
-- **split/**: arquivos `train_data.csv`, `val_data.csv`, `test_data.csv` com os caminhos das imagens e rótulos.
+- **split/**: arquivos `label_file.csv`, `train_data.csv`, `val_data.csv`, `test_data.csv` com os caminhos das imagens e rótulos.
 - **models/**: checkpoints `.keras` e o modelo final quantizado `.tflite`.
 - **metrics/**: históricos de treino em JSON e gráficos de treinamento (podem ser gerados via `train_utils.plot_history`).
 - **callbacks/**: artefatos de callbacks, se necessários.
 - **tfLite/**: pasta de apoio para experimentos com TFLite (compatível com o notebook).
 - **scripts/**:
   - `config.py`: configuração de caminhos e hiperparâmetros.
+  - `create_split.py`: cria `label_file.csv` e splits (`train_data`, `val_data`, `test_data`) a partir de dados pré-processados.
   - `dataloader.py`: carregamento de CSVs e criação de `ImageDataGenerator`.
   - `modeling.py`: definição da arquitetura MobileNetV2 + topo denso.
   - `train_utils.py`: funções genéricas de treino, callbacks, salvamento de histórico e gráficos.
@@ -49,6 +50,16 @@ python -c "import tensorflow as tf; print(tf.__version__)"
 ```
 
 Ela deve ser `2.10.1`, conforme definido em `environment.yml`.
+
+### Ordem do pipeline (pré-processamento → split → treinamento)
+
+1. **Pré-processamento** (externo): organize as imagens em subdiretórios por classe, ex.: `datas/cancer/`, `datas/normal/`.
+2. **Split** (etapa anterior ao treino): crie os CSVs com `create_split.py`:
+   ```bash
+   python -m scripts.create_split datas/
+   ```
+   Isso gera `split/label_file.csv`, `split/train_data.csv`, `split/val_data.csv`, `split/test_data.csv`.
+3. **Treinamento**: execute `python -m src.train`.
 
 ### Como rodar o pipeline de treinamento
 

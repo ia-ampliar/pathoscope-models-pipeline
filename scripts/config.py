@@ -46,3 +46,8 @@ def get_train_val_test_csv_paths():
     test_csv = SPLIT_DIR / "test_data.csv"
     return train_csv, val_csv, test_csv
 
+
+def get_label_file_path():
+    """Retorna o caminho do label_file.csv (criado por create_split.py)."""
+    return SPLIT_DIR / "label_file.csv"
+

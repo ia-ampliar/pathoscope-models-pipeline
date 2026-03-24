@@ -1,0 +1,21 @@
+{
+  "wsi_csv": "manifest.csv",
+  "wsi_path_column": "wsi_path",
+  "label_column": "label",
+  "template_image": "img_template.png",
+  "tiling_staging_dir": "workspace/wsi_tiling_raw",
+  "processed_dataset_dir": "datas",
+  "tile_size": 1000,
+  "tile_size_subtract_legacy": 2,
+  "overlap": 1,
+  "limit_bounds": true,
+  "jpeg_quality": 90,
+  "image_format": "jpeg",
+  "workers": 8,
+  "target_magnification": 20,
+  "magnification_tolerance": 2.0,
+  "max_white_background_fraction": 0.5,
+  "white_pixel_gray_threshold": 220,
+  "blur_laplacian_threshold": 1000.0,
+  "keep_staging": false
+}
