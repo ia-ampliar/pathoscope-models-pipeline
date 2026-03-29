@@ -12,7 +12,7 @@ from tensorflow.keras.callbacks import (
 )
 from tensorflow.keras.models import load_model
 
-from . import config
+import modules.config as config
 
 
 def save_history(history: tf.keras.callbacks.History, stage_name: str, checkpoint_path: str) -> Path:

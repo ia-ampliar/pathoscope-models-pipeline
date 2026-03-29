@@ -15,6 +15,7 @@ _os.environ.setdefault("TF_NUM_INTEROP_THREADS", "1")
 import os
 import time
 import json
+from pathlib import Path
 import numpy as np
 import cv2 as cv
 import openslide
@@ -33,7 +34,7 @@ import tensorflow as tf
 # Diretório base fixo (para uso local e em Docker)
 BASE_DIR = os.getenv(
     "APP_BASE_DIR",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    str(Path(__file__).resolve().parents[2]),
 )
 
 # Caminhos principais (fixos por padrão)

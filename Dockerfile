@@ -19,14 +19,14 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
-# Agora copia o restante do código (inclui scripts/, models/, data/)
+# Agora copia o restante do código (inclui modules/, models/, data/)
 COPY . .
 
 # Diretório padrão para saídas de inferência (para mapear volume)
 ENV OUTPUT_DIR="/app/output"
 RUN mkdir -p "${OUTPUT_DIR}"
 
-# Adiciona a raiz do projeto ao path do Python para ele achar a pasta 'scripts' e 'src'
+# Adiciona a raiz do projeto ao path do Python para achar 'modules' e 'src'
 ENV PYTHONPATH="/app"
 
 # O script src/infer.py lê IMAGE_PATH e escreve em OUTPUT_DIR.

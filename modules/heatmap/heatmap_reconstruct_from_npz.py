@@ -3,7 +3,7 @@
 
 """
 Módulo "teste" para reconstruir a imagem sobreposta a partir do `.npz`
-salvo pela inferência (`scripts/run_inference.py`) e da imagem original (WSI).
+salvo pela inferência (`modules/inference/run_inference.py`) e da imagem original (WSI).
 """
 
 # ---------- Limites de threads internas (ANTES de importar numpy/cv/tf) ----------

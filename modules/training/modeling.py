@@ -6,7 +6,7 @@ from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, Dropout
 from tensorflow.keras.optimizers import Adam
 
-from . import config
+import modules.config as config
 
 
 def build_baseline_model(

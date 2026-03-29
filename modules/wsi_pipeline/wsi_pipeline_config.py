@@ -12,7 +12,7 @@ import os
 from dataclasses import dataclass, fields, field, replace
 from pathlib import Path
 
-from . import config
+import modules.config as config
 
 
 def _env_path(key: str, default: Path) -> Path:

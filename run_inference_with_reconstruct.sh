@@ -158,7 +158,7 @@ print(str(d['base']))
     -v "${OUTPUT_DIR_ABS}:/app/output" \
     -w /app \
     "${DOCKER_IMAGE}" \
-    scripts/heatmap_reconstruct_from_npz.py \
+    modules/heatmap/heatmap_reconstruct_from_npz.py \
       --npz_path "${npz_container}" \
       --image_path "${image_container}" \
       --output_dir "/app/output"

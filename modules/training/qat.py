@@ -12,7 +12,7 @@ from tensorflow.keras.models import load_model
 from tensorflow_model_optimization.quantization.keras import quantize_scope
 import tensorflow_model_optimization as tfmot
 
-from . import config
+import modules.config as config
 
 
 def load_baseline_for_qat(baseline_final_path: Path) -> tf.keras.Model:

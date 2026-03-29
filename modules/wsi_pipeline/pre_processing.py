@@ -19,7 +19,7 @@ import numpy as np
 import staintools
 from tqdm import tqdm
 
-from . import config
+import modules.config as config
 from .wsi_pipeline_config import WSIPipelineConfig
 
 logger = logging.getLogger(__name__)

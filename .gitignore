@@ -10,4 +10,4 @@
 
 # Logs/logs
 /logs
-scripts/__pycache__
+modules/**/__pycache__

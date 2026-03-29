@@ -3,11 +3,8 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
-from scripts import config
-from scripts import dataloader
-from scripts import modeling
-from scripts import train_utils
-from scripts import qat
+import modules.config as config
+from modules.training import dataloader, modeling, train_utils, qat
 
 
 def set_global_seed():

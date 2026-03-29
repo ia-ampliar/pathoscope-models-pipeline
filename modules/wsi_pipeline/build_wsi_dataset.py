@@ -7,7 +7,7 @@ por ``create_split.create_label_file``: ``<classe>/<ficheiros de imagem>``.
 
 Exemplo::
 
-    python scripts/build_wsi_dataset.py --config configs/wsi_pipeline.example.json
+    python modules/wsi_pipeline/build_wsi_dataset.py --config configs/wsi_pipeline.example.json
 
 Requer biblioteca OpenSlide no sistema (Linux: libopenslide0; ver Dockerfile do projeto).
 """
@@ -19,14 +19,14 @@ import logging
 import sys
 from pathlib import Path
 
-# Garante raiz do repositório em sys.path quando se executa ``python scripts/...``
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+# Garante raiz do repositório em sys.path quando se executa o ficheiro directamente
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import config as app_config
-from scripts import pre_processing, tile
-from scripts.wsi_pipeline_config import WSIPipelineConfig, load_wsi_pipeline_config
+from modules import config as app_config
+from modules.wsi_pipeline import pre_processing, tile
+from modules.wsi_pipeline.wsi_pipeline_config import WSIPipelineConfig, load_wsi_pipeline_config
 
 
 def _resolve_cfg_paths(cfg: WSIPipelineConfig, root: Path) -> WSIPipelineConfig:
@@ -119,7 +119,7 @@ def main() -> None:
 
     print(
         "\nPróximo passo (splits para o treino):\n"
-        f"  python -m scripts.create_split {cfg.processed_dataset_dir}\n"
+        f"  python -m modules.split.create_split {cfg.processed_dataset_dir}\n"
         "Certifique-se de que ``processed_dataset_dir`` é o mesmo que ``config.DATA_DIR`` "
         "usado pelo ``dataloader`` (por omissão, a pasta ``datas/``)."
     )

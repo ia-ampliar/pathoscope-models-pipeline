@@ -7,16 +7,17 @@ Este projeto organiza o fluxo experimental do notebook `train-pipeline.ipynb` em
 - **Datas/**: imagens de entrada usadas no treinamento.
 - **split/**: arquivos `label_file.csv`, `train_data.csv`, `val_data.csv`, `test_data.csv` com os caminhos das imagens e rótulos.
 - **models/**: checkpoints `.keras` e o modelo final quantizado `.tflite`.
-- **metrics/**: históricos de treino em JSON e gráficos de treinamento (podem ser gerados via `train_utils.plot_history`).
+- **metrics/**: históricos de treino em JSON e gráficos de treinamento (podem ser gerados via `modules.training.train_utils.plot_history`).
 - **callbacks/**: artefatos de callbacks, se necessários.
 - **tfLite/**: pasta de apoio para experimentos com TFLite (compatível com o notebook).
-- **scripts/**:
-  - `config.py`: configuração de caminhos e hiperparâmetros.
-  - `create_split.py`: cria `label_file.csv` e splits (`train_data`, `val_data`, `test_data`) a partir de dados pré-processados.
-  - `dataloader.py`: carregamento de CSVs e criação de `ImageDataGenerator`.
-  - `modeling.py`: definição da arquitetura MobileNetV2 + topo denso.
-  - `train_utils.py`: funções genéricas de treino, callbacks, salvamento de histórico e gráficos.
-  - `qat.py`: funções específicas de Quantization Aware Training e exportação para TFLite.
+- **modules/**: código Python organizado por domínio:
+  - `modules/config/`: caminhos do projeto e hiperparâmetros (`settings.py`).
+  - `modules/training/`: `dataloader.py`, `modeling.py`, `train_utils.py`, `qat.py`.
+  - `modules/split/`: `create_split.py` (CSVs train/val/test).
+  - `modules/inference/`: `run_inference.py`.
+  - `modules/heatmap/`: heatmaps e reconstrução a partir de NPZ.
+  - `modules/wsi_pipeline/`: tiling WSI, pré-processamento Macenko e `build_wsi_dataset.py`.
+  - `modules/tcga_dataset/`: download de lâminas `.svs` via [API NCI GDC](https://docs.gdc.cancer.gov/API/Getting_Started/), manifest a partir de disco e geração de `split/label_file.csv` cruzando o manifest com uma planilha (Google Sheets público ou CSV local). Dados brutos recomendados em **`data/<case_id>/`** (separado de **`datas/`**, usada para patches de treino).
 - **src/**:
   - `infer.py`: ponto de entrada para inferência (Docker/local).
   - `train.py`: orquestra o pipeline completo (baseline, fine-tune, avaliação e QAT).
@@ -51,12 +52,28 @@ python -c "import tensorflow as tf; print(tf.__version__)"
 
 Ela deve ser `2.10.1`, conforme definido em `environment.yml`.
 
+### TCGA/GDC: WSI brutas, manifest e `label_file`
+
+1. **Download** (CSV com coluna de case submitter ID, ex.: `TCGA-BR-4191`): consulta o GDC, filtra `data_format=SVS` e, por omissão, `access=open`. Token opcional: variável `GDC_TOKEN` para ficheiros controlados; use `--include-controlled` para não filtrar só dados abertos.
+   ```bash
+   python -m modules.tcga_dataset download --ids-csv tcga_case_ids.csv --case-column case_submitter_id
+   ```
+   Isto cria `data/<case>/…/*.svs` e grava `wsi_manifest.csv` na raiz do projeto (ou `--manifest-output`).
+
+2. **Só manifest** (disco já preenchido): `python -m modules.tcga_dataset manifest --data-root data --output wsi_manifest.csv`
+
+3. **Labels**: manifest + planilha com colunas `Patient ID` e `Subtype` (URL Google Sheets com export público, ou ficheiro CSV local):
+   ```bash
+   python -m modules.tcga_dataset labels --manifest wsi_manifest.csv --sheets-url "https://docs.google.com/spreadsheets/d/…"
+   ```
+   Saída por omissão: `split/label_file.csv` com colunas `Image_path`, `Label` (formato esperado por `create_split` para o caminho/rótulo). Lâminas `.svs` por classe em subpastas não são o mesmo layout que `create_split` usa para patches; em geral faça tiling (`modules/wsi_pipeline`) antes de gerar splits de tiles.
+
 ### Ordem do pipeline (pré-processamento → split → treinamento)
 
 1. **Pré-processamento** (externo): organize as imagens em subdiretórios por classe, ex.: `datas/cancer/`, `datas/normal/`.
 2. **Split** (etapa anterior ao treino): crie os CSVs com `create_split.py`:
    ```bash
-   python -m scripts.create_split datas/
+   python -m modules.split.create_split datas/
    ```
    Isso gera `split/label_file.csv`, `split/train_data.csv`, `split/val_data.csv`, `split/test_data.csv`.
 3. **Treinamento**: execute `python -m src.train`.
@@ -100,17 +117,17 @@ python -m src.train --no-qat
 
 ### Etapas do pipeline
 
-- **1. Carregamento de dados (`dataloader.py`)**
+- **1. Carregamento de dados (`modules/training/dataloader.py`)**
   - Lê `train_data.csv`, `val_data.csv`, `test_data.csv` de `split/`.
   - Cria `ImageDataGenerator` com normalização `preprocess_input` (MobileNetV2).
   - Gera `train_gen`, `val_gen`, `test_gen` com `class_mode='categorical'`.
 
-- **2. Construção do modelo baseline (`modeling.py`)**
+- **2. Construção do modelo baseline (`modules/training/modeling.py`)**
   - Backbone `MobileNetV2(weights='imagenet', include_top=False)` com `input_shape=(224, 224, 3)`.
   - Topo denso: `GlobalAveragePooling2D` → `Dropout(0.4)` → `Dense(128, relu)` → `Dropout(0.2)` → `Dense(num_classes, softmax)`.
   - Otimizador `Adam` com `learning_rate=1e-4`, perda `categorical_crossentropy`, métrica `accuracy`.
 
-- **3. Treino baseline + fine-tune (`train_utils.py` + `modeling.py`)**
+- **3. Treino baseline + fine-tune (`modules/training/train_utils.py` + `modeling.py`)**
   - **Baseline (head only)**:
     - Backbone congelado (`base_trainable=False`).
     - Número de épocas iniciais: `0.4 * EPOCHS_BASELINE` (por padrão, 40 de 100).

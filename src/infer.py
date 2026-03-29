@@ -5,7 +5,7 @@
 Wrapper simples para execução em Docker ou local.
 
 Uso em Python:
-    from scripts.infer import run
+    from modules.inference import run
     run("/caminho/da/imagem.svs")
 
 Uso em Docker (exemplo):
@@ -26,8 +26,8 @@ if str(_project_root) not in sys.path:
 
 import argparse
 
-import scripts.run_inference as _ri
-from scripts.run_inference import run as _run
+import modules.inference.run_inference as _ri
+from modules.inference.run_inference import run as _run
 
 
 def _default_output_dir() -> str:

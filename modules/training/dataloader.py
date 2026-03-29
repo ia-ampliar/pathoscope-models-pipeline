@@ -6,7 +6,7 @@ import pandas as pd
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
-from . import config
+import modules.config as config
 
 
 def load_splits() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, int]:

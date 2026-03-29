@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 # Diretórios principais (mantém compatibilidade com o notebook original)
 DATA_DIR = ROOT_DIR / "datas"
