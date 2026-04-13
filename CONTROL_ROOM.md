@@ -1,6 +1,6 @@
 # Control Room (Web)
 
-Interface web para orquestrar **split**, **treino** (TensorFlow), **TCGA/GDC** (download WSI, manifest em disco, `label_file` via planilha) e **inferência** (WSI + TFLite), com telemetria de treino por WebSocket.
+Interface web para orquestrar **split**, **TCGA/GDC** (download WSI, manifest a partir de disco, `label_file` via planilha), **treino** (TensorFlow) e **inferência** (WSI + TFLite), com telemetria de treino por WebSocket.
 
 ## Requisitos
 
@@ -25,6 +25,22 @@ cd web && npm run dev
 
 O Vite em `http://localhost:5173` faz proxy de `/api` e WebSocket de treino para `http://127.0.0.1:8000` (inicie a API em paralelo).
 
+## TCGA / GDC (`modules.tcga_dataset`)
+
+A aba **TCGA / Dados** chama os mesmos fluxos que o CLI (`python -m modules.tcga_dataset`). O download usa a **API REST do GDC** (não automação do browser).
+
+- **CSV de IDs:** coluna por defeito `case_submitter_id` com valores tipo `TCGA-BR-4191` (configurável no formulário).
+- **`GDC_TOKEN`:** defina no ambiente do servidor se precisar de ficheiros controlados e marcar “incluir controlados” no formulário.
+- **Planilha (label file):** URL Google Sheets com export CSV público (ou CSV no servidor); colunas `Patient ID` e `Subtype` por defeito. O ID do caso na pasta `data/<caso>/` deve fazer match com `Patient ID`.
+
+### Endpoints TCGA
+
+- `POST /api/tcga/download` — `multipart`: ficheiro `ids_csv` + `config_json` (`TcgaDownloadJobConfig`).
+- `POST /api/tcga/manifest-from-disk` — JSON `TcgaManifestDiskJobConfig` (percorre `data/` e grava manifest).
+- `POST /api/tcga/labels` — `multipart`: `config_json` (`TcgaLabelsJobConfig`) + opcional `manifest_file`.
+- `GET /api/tcga/jobs/{id}` — estado e `result` (paths dos artefatos).
+- `GET /api/files/repo/{path}` — descarregar ficheiros sob a raiz do repo (ex.: `wsi_manifest.csv`, `split/label_file.csv`).
+
 ## Endpoints principais
 
 - `GET /api/schema` — JSON Schema e defaults para formulários dinâmicos.
@@ -32,25 +48,9 @@ O Vite em `http://localhost:5173` faz proxy de `/api` e WebSocket de treino para
 - `WebSocket /api/train/jobs/{id}/stream` — eventos `epoch`, `stage_start`, `completed`, `error`, etc.
 - `POST /api/train/jobs/{id}/stop` — encerra o subprocesso de treino.
 - `POST /api/split/jobs` — `{ "split": { ... } }`.
-- `POST /api/tcga/jobs` — `multipart/form-data`: `operation` (`download` | `manifest` | `labels`), `config_json` (string), e ficheiros opcionais `ids_csv`, `manifest_csv`, `sheets_csv`. Ver `TcgaDownloadJobConfig`, `TcgaManifestJobConfig`, `TcgaLabelsJobConfig` em `server/schemas.py`).
-- `GET /api/tcga/jobs/{id}` — estado e `result` (paths de `wsi_manifest.csv`, `label_file.csv`, etc.).
 - `POST /api/inference/jobs` — `multipart/form-data`: `inference_json` (string JSON) e opcionalmente `file` (`.svs`).
 
-### TCGA (fluxo na UI)
-
-1. **Download** — CSV com coluna de IDs de caso (padrão `case_submitter_id`); os `.svs` são descarregados via API GDC para `data/<caso>/…` e é gerado `wsi_manifest.csv` na raiz (ou caminho configurado). Dados controlados: defina `GDC_TOKEN` no ambiente do servidor.
-2. **Manifest (disco)** — se `data/` já existe, gera `wsi_manifest.csv` sem rede.
-3. **Label file** — URL pública do Google Sheets (export CSV) **ou** upload de CSV local; cruza com o manifest usando `Patient ID` e `Subtype`; saída `split/label_file.csv` com colunas `Image_path` e `Label` (compatível com `create_split`).
-
-CSV de exemplo para IDs:
-
-```csv
-case_submitter_id
-TCGA-BR-4191
-TCGA-BR-4257
-```
-
-Artefatos e logs temporários ficam em `server_state/` (ignorado no git).
+Artefatos e logs temporários ficam em `server_state/` (ignorado no git). Uploads TCGA (CSV de IDs, manifest opcional) também em `server_state/uploads/`.
 
 ## Docker
 

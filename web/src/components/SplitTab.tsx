@@ -49,12 +49,11 @@ export function SplitTab() {
 
   return (
     <div className="max-w-xl rounded-xl border border-slate-800 bg-surface/80 p-4">
-      <h2 className="mb-3 text-sm font-semibold text-accent">Split train/val/test</h2>
       <p className="mb-3 text-xs text-slate-500">
-        Para lâminas TCGA brutas, use a aba <strong className="text-slate-400">TCGA / WSI</strong> (download,
-        manifest, label_file) e depois aponte o split para o <code className="text-accent">label_file.csv</code> em{" "}
-        <code className="text-accent">split/</code> ou faça tiling para pastas por classe em <code>datas/</code>.
+        Para obter <code className="text-accent">label_file.csv</code> a partir de dados TCGA e planilha, use a aba{" "}
+        <strong>TCGA / Dados</strong>.
       </p>
+      <h2 className="mb-3 text-sm font-semibold text-accent">Split train/val/test</h2>
       {schemaPayload && (
         <SchemaForm schemaRoot={sch as never} values={split} onChange={setSplit} />
       )}

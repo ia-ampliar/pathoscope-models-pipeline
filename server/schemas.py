@@ -154,57 +154,51 @@ class InferenceJobConfig(BaseModel):
 
 
 class TcgaDownloadJobConfig(BaseModel):
-    """Download de WSI via API GDC; manifest com caminhos relativos ao repositório."""
+    """Download WSI via API GDC + manifest CSV (modules.tcga_dataset.download)."""
 
     case_id_column: str = Field(
         "case_submitter_id",
-        description="Coluna do CSV de IDs com casos TCGA (ex.: TCGA-BR-4191).",
-    )
-    data_root: Optional[str] = Field(
-        None,
-        description="Pasta base dos casos (padrão: data/ na raiz do projeto).",
-    )
-    wsi_manifest_csv: Optional[str] = Field(
-        None,
-        description="Onde gravar o manifest (padrão: wsi_manifest.csv na raiz).",
+        description="Coluna do CSV de IDs com case submitter (ex.: TCGA-BR-4191).",
     )
     include_controlled: bool = Field(
         False,
-        description="Incluir ficheiros não abertos; requer GDC_TOKEN no ambiente do servidor.",
+        description="Incluir ficheiros não abertos (requer GDC_TOKEN no servidor).",
     )
-    gdc_files_page_size: int = Field(500, ge=50, le=5000, description="Tamanho de página na API GDC.")
-
-
-class TcgaManifestJobConfig(BaseModel):
-    """Gerar manifest apenas percorrendo disco (sem GDC)."""
-
-    data_root: Optional[str] = Field(
-        None,
-        description="Raiz a varrer por *.svs (padrão: data/).",
+    data_root: str = Field("data", description="Pasta base para data/<caso>/*.svs (relativa à raiz do repo).")
+    manifest_output: str = Field(
+        "wsi_manifest.csv",
+        description="Onde gravar o manifest (relativo à raiz do repo).",
     )
-    wsi_manifest_csv: Optional[str] = Field(
-        None,
-        description="CSV de saída (padrão: wsi_manifest.csv na raiz).",
+    gdc_page_size: int = Field(500, ge=10, le=5000, description="Page size na API GDC files.")
+
+
+class TcgaManifestDiskJobConfig(BaseModel):
+    """Manifest só a partir de ficheiros .svs já em disco."""
+
+    data_root: str = Field("data", description="Pasta a percorrer (relativa à raiz do repo).")
+    manifest_output: str = Field(
+        "wsi_manifest.csv",
+        description="CSV de saída com coluna image_path (relativo à raiz do repo).",
     )
 
 
 class TcgaLabelsJobConfig(BaseModel):
-    """Cruzar manifest com planilha (Google Sheets ou CSV) → label_file.csv."""
+    """Cruza manifest com planilha (Patient ID + Subtype) → label_file.csv."""
 
-    sheets_url: Optional[str] = Field(
-        None,
-        description="URL pública/exportável do Google Sheets (ou deixe vazio e envie sheets_csv).",
+    sheets_url: str = Field(
+        ...,
+        description="URL Google Sheets (export CSV público) ou caminho absoluto no servidor para .csv.",
     )
-    manifest_csv: Optional[str] = Field(
-        None,
-        description="Manifest de entrada (padrão: wsi_manifest.csv na raiz do repo).",
+    manifest_csv: str = Field(
+        "wsi_manifest.csv",
+        description="Manifest com caminhos (relativo à raiz do repo ou absoluto).",
     )
-    label_file_csv: Optional[str] = Field(
-        None,
-        description="Saída label_file (padrão: split/label_file.csv).",
+    label_output: str = Field(
+        "split/label_file.csv",
+        description="Saída Image_path, Label (relativo à raiz do repo).",
     )
-    patient_id_column: str = Field("Patient ID", description="Coluna na planilha com ID do doente/caso.")
-    subtype_column: str = Field("Subtype", description="Coluna com a classe (subtype).")
+    patient_id_column: str = Field("Patient ID", description="Coluna na planilha com ID do caso/paciente.")
+    subtype_column: str = Field("Subtype", description="Coluna na planilha com o rótulo.")
 
 
 def build_api_schema_payload() -> dict[str, Any]:
@@ -214,16 +208,20 @@ def build_api_schema_payload() -> dict[str, Any]:
         "groups": [
             {"id": "training", "title": "Treino", "description": "MobileNetV2 + fine-tune + QAT opcional"},
             {"id": "split", "title": "Split", "description": "Gerar CSVs train/val/test a partir de pastas por classe"},
-            {"id": "tcga", "title": "TCGA / WSI", "description": "Download GDC, manifest em disco e label file via planilha"},
             {"id": "inference", "title": "Inferência", "description": "WSI .svs + TFLite + heatmap"},
+            {
+                "id": "tcga",
+                "title": "TCGA / Dados",
+                "description": "Download GDC, manifest a partir de disco, label_file via Google Sheets",
+            },
         ],
         "schemas": {
             "TrainingJobConfig": TrainingJobConfig.model_json_schema(),
             "SplitJobConfig": SplitJobConfig.model_json_schema(),
-            "TcgaDownloadJobConfig": TcgaDownloadJobConfig.model_json_schema(),
-            "TcgaManifestJobConfig": TcgaManifestJobConfig.model_json_schema(),
-            "TcgaLabelsJobConfig": TcgaLabelsJobConfig.model_json_schema(),
             "InferenceJobConfig": InferenceJobConfig.model_json_schema(),
+            "TcgaDownloadJobConfig": TcgaDownloadJobConfig.model_json_schema(),
+            "TcgaManifestDiskJobConfig": TcgaManifestDiskJobConfig.model_json_schema(),
+            "TcgaLabelsJobConfig": TcgaLabelsJobConfig.model_json_schema(),
         },
         "defaults": {
             "TrainingJobConfig": TrainingJobConfig().model_dump(),
@@ -236,9 +234,11 @@ def build_api_schema_payload() -> dict[str, Any]:
                 "random_state": None,
                 "use_relative_paths": True,
             },
-            "TcgaDownloadJobConfig": TcgaDownloadJobConfig().model_dump(mode="json"),
-            "TcgaManifestJobConfig": TcgaManifestJobConfig().model_dump(mode="json"),
-            "TcgaLabelsJobConfig": TcgaLabelsJobConfig().model_dump(mode="json"),
             "InferenceJobConfig": InferenceJobConfig().model_dump(mode="json"),
+            "TcgaDownloadJobConfig": TcgaDownloadJobConfig().model_dump(mode="json"),
+            "TcgaManifestDiskJobConfig": TcgaManifestDiskJobConfig().model_dump(mode="json"),
+            "TcgaLabelsJobConfig": TcgaLabelsJobConfig(
+                sheets_url="https://docs.google.com/spreadsheets/d/EXAMPLE/edit",
+            ).model_dump(mode="json"),
         },
     }

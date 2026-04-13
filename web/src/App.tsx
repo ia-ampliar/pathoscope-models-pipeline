@@ -18,7 +18,7 @@ export default function App() {
             [
               ["train", "Treino"],
               ["split", "Split"],
-              ["tcga", "TCGA / WSI"],
+              ["tcga", "TCGA / Dados"],
               ["infer", "Inferência"],
             ] as const
           ).map(([id, label]) => (
@@ -35,7 +35,7 @@ export default function App() {
           ))}
         </nav>
         <p className="mt-8 text-[10px] leading-relaxed text-slate-600">
-          Dashboard dark: treino, split, TCGA/GDC, inferência WSI/TFLite.
+          Dashboard dark para orquestrar treino TensorFlow, split de dados e inferência WSI/TFLite.
         </p>
       </aside>
       <main className="min-w-0 flex-1 overflow-auto p-6">
