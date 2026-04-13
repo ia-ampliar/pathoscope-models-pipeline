@@ -20,7 +20,6 @@ from fastapi import (
     UploadFile,
     WebSocket,
 )
-from starlette.websockets import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,22 +29,15 @@ from server.jobs import (
     JobStatus,
     spawn_infer_worker,
     spawn_split_worker,
-    spawn_tcga_download_worker,
-    spawn_tcga_labels_worker,
-    spawn_tcga_manifest_worker,
     spawn_train_worker,
     stop_train_job,
     wait_infer_process,
     wait_split_process,
-    wait_tcga_process,
     wait_train_process,
 )
 from server.schemas import (
     InferenceJobConfig,
     SplitJobConfig,
-    TcgaDownloadJobConfig,
-    TcgaLabelsJobConfig,
-    TcgaManifestDiskJobConfig,
     TrainingJobConfig,
     build_api_schema_payload,
 )
@@ -248,101 +240,6 @@ def get_infer_job(job_id: str) -> dict[str, Any]:
         raise HTTPException(404, "Job não encontrado")
     return {
         "job_id": job.id,
-        "status": job.status.value,
-        "error_message": job.error_message,
-        "result": job.result,
-    }
-
-
-def _safe_repo_path(rel: str) -> Path:
-    """Resolve path under ROOT; reject traversal."""
-    if ".." in rel or rel.startswith(("/", "\\")):
-        raise HTTPException(400, "Caminho inválido")
-    target = (ROOT / rel).resolve()
-    root_r = ROOT.resolve()
-    if not str(target).startswith(str(root_r)) or not target.is_file():
-        raise HTTPException(404, "Ficheiro não encontrado")
-    return target
-
-
-@app.get("/api/files/repo/{rel_path:path}")
-def serve_repo_file(rel_path: str) -> FileResponse:
-    """Serve ficheiros sob a raiz do repositório (ex.: wsi_manifest.csv, split/label_file.csv)."""
-    return FileResponse(_safe_repo_path(rel_path))
-
-
-@app.post("/api/tcga/download")
-async def tcga_download(
-    ids_csv: UploadFile = File(...),
-    config_json: str = Form(...),
-) -> JSONResponse:
-    cfg = TcgaDownloadJobConfig.model_validate(json.loads(config_json))
-    job = registry.new_tcga_job("download")
-    uploads = ROOT / "server_state" / "uploads"
-    uploads.mkdir(parents=True, exist_ok=True)
-    dest = uploads / f"{job.id}_ids.csv"
-    with open(dest, "wb") as out:
-        shutil.copyfileobj(ids_csv.file, out)
-
-    spawn_tcga_download_worker(ROOT, job, dest, cfg.model_dump(mode="json", exclude_none=True))
-
-    async def _watch() -> None:
-        await wait_tcga_process(job, ROOT)
-
-    asyncio.create_task(_watch())
-    return JSONResponse({"job_id": job.id, "status": job.status.value, "kind": "download"})
-
-
-@app.post("/api/tcga/manifest-from-disk")
-async def tcga_manifest_disk(body: TcgaManifestDiskJobConfig) -> JSONResponse:
-    job = registry.new_tcga_job("manifest")
-    spawn_tcga_manifest_worker(ROOT, job, body.model_dump(mode="json", exclude_none=True))
-
-    async def _watch() -> None:
-        await wait_tcga_process(job, ROOT)
-
-    asyncio.create_task(_watch())
-    return JSONResponse({"job_id": job.id, "status": job.status.value, "kind": "manifest"})
-
-
-@app.post("/api/tcga/labels")
-async def tcga_labels(
-    config_json: str = Form(...),
-    manifest_file: Optional[UploadFile] = File(None),
-) -> JSONResponse:
-    cfg = TcgaLabelsJobConfig.model_validate(json.loads(config_json))
-    job = registry.new_tcga_job("labels")
-    uploads = ROOT / "server_state" / "uploads"
-    uploads.mkdir(parents=True, exist_ok=True)
-    manifest_path: Optional[Path] = None
-    if manifest_file and manifest_file.filename:
-        dest = uploads / f"{job.id}_manifest.csv"
-        with open(dest, "wb") as out:
-            shutil.copyfileobj(manifest_file.file, out)
-        manifest_path = dest
-
-    spawn_tcga_labels_worker(
-        ROOT,
-        job,
-        cfg.model_dump(mode="json", exclude_none=True),
-        manifest_csv_path=manifest_path,
-    )
-
-    async def _watch() -> None:
-        await wait_tcga_process(job, ROOT)
-
-    asyncio.create_task(_watch())
-    return JSONResponse({"job_id": job.id, "status": job.status.value, "kind": "labels"})
-
-
-@app.get("/api/tcga/jobs/{job_id}")
-def get_tcga_job(job_id: str) -> dict[str, Any]:
-    job = registry.tcga_jobs.get(job_id)
-    if not job:
-        raise HTTPException(404, "Job não encontrado")
-    return {
-        "job_id": job.id,
-        "kind": job.kind,
         "status": job.status.value,
         "error_message": job.error_message,
         "result": job.result,

@@ -1,6 +1,6 @@
 # Control Room (Web)
 
-Interface web para orquestrar **split**, **TCGA/GDC** (download WSI, manifest a partir de disco, `label_file` via planilha), **treino** (TensorFlow) e **inferência** (WSI + TFLite), com telemetria de treino por WebSocket.
+Interface web para orquestrar **split**, **treino** (TensorFlow) e **inferência** (WSI + TFLite), com telemetria de treino por WebSocket.
 
 ## Requisitos
 
@@ -25,22 +25,6 @@ cd web && npm run dev
 
 O Vite em `http://localhost:5173` faz proxy de `/api` e WebSocket de treino para `http://127.0.0.1:8000` (inicie a API em paralelo).
 
-## TCGA / GDC (`modules.tcga_dataset`)
-
-A aba **TCGA / Dados** chama os mesmos fluxos que o CLI (`python -m modules.tcga_dataset`). O download usa a **API REST do GDC** (não automação do browser).
-
-- **CSV de IDs:** coluna por defeito `case_submitter_id` com valores tipo `TCGA-BR-4191` (configurável no formulário).
-- **`GDC_TOKEN`:** defina no ambiente do servidor se precisar de ficheiros controlados e marcar “incluir controlados” no formulário.
-- **Planilha (label file):** URL Google Sheets com export CSV público (ou CSV no servidor); colunas `Patient ID` e `Subtype` por defeito. O ID do caso na pasta `data/<caso>/` deve fazer match com `Patient ID`.
-
-### Endpoints TCGA
-
-- `POST /api/tcga/download` — `multipart`: ficheiro `ids_csv` + `config_json` (`TcgaDownloadJobConfig`).
-- `POST /api/tcga/manifest-from-disk` — JSON `TcgaManifestDiskJobConfig` (percorre `data/` e grava manifest).
-- `POST /api/tcga/labels` — `multipart`: `config_json` (`TcgaLabelsJobConfig`) + opcional `manifest_file`.
-- `GET /api/tcga/jobs/{id}` — estado e `result` (paths dos artefatos).
-- `GET /api/files/repo/{path}` — descarregar ficheiros sob a raiz do repo (ex.: `wsi_manifest.csv`, `split/label_file.csv`).
-
 ## Endpoints principais
 
 - `GET /api/schema` — JSON Schema e defaults para formulários dinâmicos.
@@ -50,7 +34,7 @@ A aba **TCGA / Dados** chama os mesmos fluxos que o CLI (`python -m modules.tcga
 - `POST /api/split/jobs` — `{ "split": { ... } }`.
 - `POST /api/inference/jobs` — `multipart/form-data`: `inference_json` (string JSON) e opcionalmente `file` (`.svs`).
 
-Artefatos e logs temporários ficam em `server_state/` (ignorado no git). Uploads TCGA (CSV de IDs, manifest opcional) também em `server_state/uploads/`.
+Artefatos e logs temporários ficam em `server_state/` (ignorado no git).
 
 ## Docker
 

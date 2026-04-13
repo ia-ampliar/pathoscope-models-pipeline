@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { InferTab } from "./components/InferTab";
 import { SplitTab } from "./components/SplitTab";
-import { TcgaTab } from "./components/TcgaTab";
 import { TrainTab } from "./components/TrainTab";
 
-type Tab = "train" | "split" | "tcga" | "infer";
+type Tab = "train" | "split" | "infer";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("train");
@@ -18,7 +17,6 @@ export default function App() {
             [
               ["train", "Treino"],
               ["split", "Split"],
-              ["tcga", "TCGA / Dados"],
               ["infer", "Inferência"],
             ] as const
           ).map(([id, label]) => (
@@ -47,7 +45,6 @@ export default function App() {
         </header>
         {tab === "train" && <TrainTab />}
         {tab === "split" && <SplitTab />}
-        {tab === "tcga" && <TcgaTab />}
         {tab === "infer" && <InferTab />}
       </main>
     </div>
