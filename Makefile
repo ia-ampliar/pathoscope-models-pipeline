@@ -30,7 +30,8 @@ HEATMAP_OUT_DIR ?= output
 
 .PHONY: help setup-train split train train-cpu \
 	tcga-download tcga-manifest tcga-labels \
-	wsi-build infer heatmap-reconstruct pipeline-patch
+	wsi-build infer heatmap-reconstruct pipeline-patch \
+	control-room-api control-room-web
 
 help:
 	@echo "Pathoscope models pipeline — alvos Make"
@@ -51,6 +52,8 @@ help:
 	@echo "  wsi-build           — tiling WSI + pré-processamento (WSI_CONFIG)"
 	@echo "  infer               — exige IMAGE_PATH"
 	@echo "  heatmap-reconstruct — exige NPZ_PATH e IMAGE_PATH"
+	@echo "  control-room-api    — PYTHONPATH=. uvicorn server.main:app :8000"
+	@echo "  control-room-web    — cd web && npm run dev (com API em :8000)"
 	@echo ""
 	@echo "Exemplos:"
 	@echo "  make split DATAS_DIR=datas SPLIT_ARGS=\"--test_size 0.2\""
@@ -115,3 +118,9 @@ heatmap-reconstruct:
 		--npz_path $(NPZ_PATH) \
 		--image_path $(IMAGE_PATH) \
 		--output_dir $(HEATMAP_OUT_DIR)
+
+control-room-api:
+	PYTHONPATH=. $(PYTHON) -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+
+control-room-web:
+	cd web && npm run dev

@@ -1,4 +1,5 @@
 import argparse
+from typing import Optional
 
 import numpy as np
 import tensorflow as tf
@@ -23,6 +24,11 @@ def get_strategy():
 def run_training_pipeline(
     use_strategy: bool = True,
     use_qat: bool = True,
+    augment: bool = False,
+    metrics_stream_path: Optional[str] = None,
+    qat_epochs: Optional[int] = None,
+    overfitting_ratio_threshold: float = 1.6,
+    target_val_loss: Optional[float] = None,
 ) -> None:
     set_global_seed()
 
@@ -35,9 +41,16 @@ def run_training_pipeline(
         val_df,
         test_df,
         image_root=config.DATA_DIR,
-        augment=False,
+        augment=augment,
         batch_size=config.BATCH_SIZE,
     )
+
+    stream_kw = {}
+    if metrics_stream_path:
+        stream_kw = {
+            "metrics_stream_path": metrics_stream_path,
+            "overfitting_ratio_threshold": overfitting_ratio_threshold,
+        }
 
     # 2) Baseline FP32
     if strategy is not None:
@@ -66,6 +79,7 @@ def run_training_pipeline(
         stage_name="baseline",
         early_stop_patience=config.PATIENCE_BASELINE,
         strategy=strategy,
+        **stream_kw,
     )
 
     # 3) Fine-tuning (opcional, baseado no notebook original)
@@ -88,6 +102,7 @@ def run_training_pipeline(
         stage_name="fine_tune",
         early_stop_patience=config.PATIENCE_BASELINE,
         strategy=strategy,
+        **stream_kw,
     )
 
     # 4) Avaliação do melhor modelo FP32 no conjunto de teste
@@ -96,7 +111,31 @@ def run_training_pipeline(
     test_loss, test_acc = best_fp32_model.evaluate(test_gen, verbose=1)
     print(f"FP32 - Test Loss: {test_loss:.4f}, Test Accuracy: {test_acc:.4f}")
 
+    if metrics_stream_path:
+        train_utils.append_metrics_jsonl(
+            metrics_stream_path,
+            {
+                "type": "test_eval",
+                "test_loss": float(test_loss),
+                "test_accuracy": float(test_acc),
+            },
+        )
+        val_losses = history_finetune.history.get("val_loss", [])
+        if val_losses and target_val_loss is not None:
+            best_val = min(float(x) for x in val_losses)
+            train_utils.append_metrics_jsonl(
+                metrics_stream_path,
+                {
+                    "type": "target_val_loss_check",
+                    "best_val_loss": best_val,
+                    "target_val_loss": float(target_val_loss),
+                    "hit": best_val <= target_val_loss,
+                },
+            )
+
     # 5) QAT + TFLite
+    qat_epochs_eff = int(qat_epochs if qat_epochs is not None else 15)
+    tflite_path = None
     if use_qat:
         baseline_final = qat.load_baseline_for_qat(baseline_final_path)
         quantized_model = qat.apply_qat(baseline_final)
@@ -104,10 +143,21 @@ def run_training_pipeline(
             quantized_model,
             train_gen=train_gen,
             val_gen=val_gen,
-            epochs=15,
+            epochs=qat_epochs_eff,
+            **stream_kw,
         )
         tflite_path = qat.export_qat_to_tflite(qat_checkpoint)
         print(f"QAT TFLite salvo em: {tflite_path}")
+
+    if metrics_stream_path:
+        payload = {
+            "type": "completed",
+            "best_fp32_model": str(best_fp32_path),
+            "baseline_final": str(baseline_final_path),
+        }
+        if tflite_path is not None:
+            payload["tflite"] = str(tflite_path)
+        train_utils.append_metrics_jsonl(metrics_stream_path, payload)
 
 
 def main():

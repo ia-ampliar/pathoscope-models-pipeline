@@ -1,0 +1,6 @@
+# API + servidor (instalar junto com dependências do projeto / TensorFlow)
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.0
+python-multipart>=0.0.9
+websockets>=12.0

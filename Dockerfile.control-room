@@ -1,0 +1,28 @@
+# Imagem única: build do frontend (Node) + API Python.
+# TensorFlow e dependências de treino/inferência: ajuste conforme o seu ambiente (CPU/GPU).
+# Exemplo CPU: descomente a linha tensorflow ou use requirements do projeto.
+
+FROM node:20-bookworm-slim AS webbuild
+WORKDIR /w
+COPY web/package.json ./
+RUN npm install
+COPY web/ .
+RUN npm run build
+
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+COPY requirements-server.txt .
+RUN pip install --no-cache-dir -r requirements-server.txt
+
+# Pipeline ML (TensorFlow, OpenSlide, etc.): instale o mesmo conjunto que você usa no host,
+# por exemplo a partir de dependences/train_environment.yml / infer, ou:
+# RUN pip install --no-cache-dir "tensorflow>=2.17" opencv-python-headless openslide-python pillow numpy pandas scikit-learn matplotlib tensorflow-model-optimization
+
+COPY . .
+COPY --from=webbuild /w/dist ./web/dist
+
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Tuple
+from typing import List, Optional
 
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
@@ -13,6 +13,8 @@ from tensorflow_model_optimization.quantization.keras import quantize_scope
 import tensorflow_model_optimization as tfmot
 
 import modules.config as config
+
+from modules.training.train_utils import make_streaming_metrics_callback
 
 
 def load_baseline_for_qat(baseline_final_path: Path) -> tf.keras.Model:
@@ -41,11 +43,14 @@ def train_qat(
     train_gen,
     val_gen,
     epochs: int = 15,
+    metrics_stream_path: Optional[str] = None,
+    overfitting_ratio_threshold: float = 1.6,
+    extra_callbacks: Optional[List[tf.keras.callbacks.Callback]] = None,
 ) -> Path:
     """Treina o modelo quantizado e retorna o caminho do melhor checkpoint."""
     checkpoint_path = config.MODELS_DIR / "qat_baseline_checkpoint.keras"
 
-    callbacks = [
+    callbacks: List[tf.keras.callbacks.Callback] = [
         ModelCheckpoint(
             str(checkpoint_path),
             monitor="val_loss",
@@ -65,6 +70,16 @@ def train_qat(
             verbose=1,
         ),
     ]
+    if metrics_stream_path:
+        callbacks.append(
+            make_streaming_metrics_callback(
+                "qat",
+                metrics_stream_path,
+                overfitting_ratio_threshold=overfitting_ratio_threshold,
+            )
+        )
+    if extra_callbacks:
+        callbacks.extend(extra_callbacks)
 
     quantized_model.fit(
         train_gen,

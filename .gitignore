@@ -11,3 +11,8 @@
 # Logs/logs
 /logs
 modules/**/__pycache__
+
+# Control Room
+/server_state
+/web/node_modules
+/web/dist
