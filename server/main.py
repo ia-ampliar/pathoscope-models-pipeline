@@ -19,6 +19,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
     WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -29,21 +30,35 @@ from server.jobs import (
     JobStatus,
     spawn_infer_worker,
     spawn_split_worker,
+    spawn_tcga_worker,
     spawn_train_worker,
     stop_train_job,
     wait_infer_process,
     wait_split_process,
+    wait_tcga_process,
     wait_train_process,
 )
 from server.schemas import (
     InferenceJobConfig,
     SplitJobConfig,
+    TcgaDownloadJobConfig,
+    TcgaLabelsJobConfig,
+    TcgaManifestJobConfig,
     TrainingJobConfig,
     build_api_schema_payload,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 registry = JobRegistry(ROOT)
+
+
+def _resolve_repo_path(rel_or_abs: Optional[str], default: Path) -> str:
+    if not rel_or_abs:
+        return str(default.resolve())
+    p = Path(rel_or_abs)
+    if p.is_absolute():
+        return str(p.resolve())
+    return str((ROOT / p).resolve())
 
 app = FastAPI(title="Pathoscope Control Room", version="0.1.0")
 
@@ -191,6 +206,108 @@ def get_split_job(job_id: str) -> dict[str, Any]:
         "job_id": job.id,
         "status": job.status.value,
         "error_message": job.error_message,
+    }
+
+
+@app.post("/api/tcga/jobs")
+async def create_tcga_job(
+    operation: str = Form(...),
+    config_json: str = Form(...),
+    ids_csv: Optional[UploadFile] = File(None),
+    manifest_csv: Optional[UploadFile] = File(None),
+    sheets_csv: Optional[UploadFile] = File(None),
+) -> JSONResponse:
+    uploads = ROOT / "server_state" / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+    job = registry.new_tcga_job()
+    result_json = ROOT / "server_state" / f"tcga_result_{job.id}.json"
+    if result_json.exists():
+        result_json.unlink()
+
+    op = operation.strip().lower()
+    raw_cfg = json.loads(config_json)
+
+    payload: dict[str, Any] = {
+        "operation": op,
+        "root_dir": str(ROOT.resolve()),
+        "result_json_path": str(result_json.resolve()),
+    }
+
+    if op == "download":
+        if not ids_csv or not ids_csv.filename:
+            raise HTTPException(400, "Envie o ficheiro ids_csv (lista de casos TCGA).")
+        ids_dest = uploads / f"{job.id}_tcga_ids.csv"
+        with open(ids_dest, "wb") as out:
+            shutil.copyfileobj(ids_csv.file, out)
+        dl = TcgaDownloadJobConfig.model_validate(raw_cfg)
+        payload["ids_csv_path"] = str(ids_dest.resolve())
+        payload["case_id_column"] = dl.case_id_column
+        payload["include_controlled"] = dl.include_controlled
+        payload["gdc_files_page_size"] = dl.gdc_files_page_size
+        if dl.data_root:
+            payload["data_root"] = _resolve_repo_path(dl.data_root, ROOT / "data")
+        if dl.wsi_manifest_csv:
+            payload["wsi_manifest_csv"] = _resolve_repo_path(dl.wsi_manifest_csv, ROOT / "wsi_manifest.csv")
+
+    elif op == "manifest":
+        man = TcgaManifestJobConfig.model_validate(raw_cfg)
+        if man.data_root:
+            payload["data_root"] = _resolve_repo_path(man.data_root, ROOT / "data")
+        if man.wsi_manifest_csv:
+            payload["wsi_manifest_csv"] = _resolve_repo_path(man.wsi_manifest_csv, ROOT / "wsi_manifest.csv")
+
+    elif op == "labels":
+        lab = TcgaLabelsJobConfig.model_validate(raw_cfg)
+        if sheets_csv and sheets_csv.filename:
+            sheet_dest = uploads / f"{job.id}_sheets.csv"
+            with open(sheet_dest, "wb") as out:
+                shutil.copyfileobj(sheets_csv.file, out)
+            sheets_ref = str(sheet_dest.resolve())
+        elif lab.sheets_url and lab.sheets_url.strip():
+            sheets_ref = lab.sheets_url.strip()
+        else:
+            raise HTTPException(400, "Forneça sheets_url na config ou envie sheets_csv.")
+        if manifest_csv and manifest_csv.filename:
+            man_dest = uploads / f"{job.id}_manifest.csv"
+            with open(man_dest, "wb") as out:
+                shutil.copyfileobj(manifest_csv.file, out)
+            manifest_path = str(man_dest.resolve())
+        elif lab.manifest_csv and lab.manifest_csv.strip():
+            manifest_path = _resolve_repo_path(lab.manifest_csv, ROOT / "wsi_manifest.csv")
+        else:
+            manifest_path = str((ROOT / "wsi_manifest.csv").resolve())
+        label_out = (
+            _resolve_repo_path(lab.label_file_csv, ROOT / "split" / "label_file.csv")
+            if lab.label_file_csv
+            else str((ROOT / "split" / "label_file.csv").resolve())
+        )
+        payload["sheets_ref"] = sheets_ref
+        payload["manifest_csv_path"] = manifest_path
+        payload["label_file_csv"] = label_out
+        payload["patient_id_column"] = lab.patient_id_column
+        payload["subtype_column"] = lab.subtype_column
+    else:
+        raise HTTPException(400, "operation deve ser download, manifest ou labels.")
+
+    spawn_tcga_worker(ROOT, job, payload)
+
+    async def _watch() -> None:
+        await wait_tcga_process(job, ROOT)
+
+    asyncio.create_task(_watch())
+    return JSONResponse({"job_id": job.id, "status": job.status.value, "operation": op})
+
+
+@app.get("/api/tcga/jobs/{job_id}")
+def get_tcga_job(job_id: str) -> dict[str, Any]:
+    job = registry.tcga_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job não encontrado")
+    return {
+        "job_id": job.id,
+        "status": job.status.value,
+        "error_message": job.error_message,
+        "result": job.result,
     }
 
 

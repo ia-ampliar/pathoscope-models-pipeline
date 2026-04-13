@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { InferTab } from "./components/InferTab";
 import { SplitTab } from "./components/SplitTab";
+import { TcgaTab } from "./components/TcgaTab";
 import { TrainTab } from "./components/TrainTab";
 
-type Tab = "train" | "split" | "infer";
+type Tab = "train" | "split" | "tcga" | "infer";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("train");
@@ -17,6 +18,7 @@ export default function App() {
             [
               ["train", "Treino"],
               ["split", "Split"],
+              ["tcga", "TCGA / WSI"],
               ["infer", "Inferência"],
             ] as const
           ).map(([id, label]) => (
@@ -33,7 +35,7 @@ export default function App() {
           ))}
         </nav>
         <p className="mt-8 text-[10px] leading-relaxed text-slate-600">
-          Dashboard dark para orquestrar treino TensorFlow, split de dados e inferência WSI/TFLite.
+          Dashboard dark: treino, split, TCGA/GDC, inferência WSI/TFLite.
         </p>
       </aside>
       <main className="min-w-0 flex-1 overflow-auto p-6">
@@ -45,6 +47,7 @@ export default function App() {
         </header>
         {tab === "train" && <TrainTab />}
         {tab === "split" && <SplitTab />}
+        {tab === "tcga" && <TcgaTab />}
         {tab === "infer" && <InferTab />}
       </main>
     </div>

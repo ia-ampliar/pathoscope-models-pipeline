@@ -153,6 +153,60 @@ class InferenceJobConfig(BaseModel):
     min_ram_gb: float = Field(8.0, ge=0.0, description="RAM mínima (Linux /proc); 0 desativa checagem.")
 
 
+class TcgaDownloadJobConfig(BaseModel):
+    """Download de WSI via API GDC; manifest com caminhos relativos ao repositório."""
+
+    case_id_column: str = Field(
+        "case_submitter_id",
+        description="Coluna do CSV de IDs com casos TCGA (ex.: TCGA-BR-4191).",
+    )
+    data_root: Optional[str] = Field(
+        None,
+        description="Pasta base dos casos (padrão: data/ na raiz do projeto).",
+    )
+    wsi_manifest_csv: Optional[str] = Field(
+        None,
+        description="Onde gravar o manifest (padrão: wsi_manifest.csv na raiz).",
+    )
+    include_controlled: bool = Field(
+        False,
+        description="Incluir ficheiros não abertos; requer GDC_TOKEN no ambiente do servidor.",
+    )
+    gdc_files_page_size: int = Field(500, ge=50, le=5000, description="Tamanho de página na API GDC.")
+
+
+class TcgaManifestJobConfig(BaseModel):
+    """Gerar manifest apenas percorrendo disco (sem GDC)."""
+
+    data_root: Optional[str] = Field(
+        None,
+        description="Raiz a varrer por *.svs (padrão: data/).",
+    )
+    wsi_manifest_csv: Optional[str] = Field(
+        None,
+        description="CSV de saída (padrão: wsi_manifest.csv na raiz).",
+    )
+
+
+class TcgaLabelsJobConfig(BaseModel):
+    """Cruzar manifest com planilha (Google Sheets ou CSV) → label_file.csv."""
+
+    sheets_url: Optional[str] = Field(
+        None,
+        description="URL pública/exportável do Google Sheets (ou deixe vazio e envie sheets_csv).",
+    )
+    manifest_csv: Optional[str] = Field(
+        None,
+        description="Manifest de entrada (padrão: wsi_manifest.csv na raiz do repo).",
+    )
+    label_file_csv: Optional[str] = Field(
+        None,
+        description="Saída label_file (padrão: split/label_file.csv).",
+    )
+    patient_id_column: str = Field("Patient ID", description="Coluna na planilha com ID do doente/caso.")
+    subtype_column: str = Field("Subtype", description="Coluna com a classe (subtype).")
+
+
 def build_api_schema_payload() -> dict[str, Any]:
     """JSON para o frontend: schemas + grupos."""
     return {
@@ -160,11 +214,15 @@ def build_api_schema_payload() -> dict[str, Any]:
         "groups": [
             {"id": "training", "title": "Treino", "description": "MobileNetV2 + fine-tune + QAT opcional"},
             {"id": "split", "title": "Split", "description": "Gerar CSVs train/val/test a partir de pastas por classe"},
+            {"id": "tcga", "title": "TCGA / WSI", "description": "Download GDC, manifest em disco e label file via planilha"},
             {"id": "inference", "title": "Inferência", "description": "WSI .svs + TFLite + heatmap"},
         ],
         "schemas": {
             "TrainingJobConfig": TrainingJobConfig.model_json_schema(),
             "SplitJobConfig": SplitJobConfig.model_json_schema(),
+            "TcgaDownloadJobConfig": TcgaDownloadJobConfig.model_json_schema(),
+            "TcgaManifestJobConfig": TcgaManifestJobConfig.model_json_schema(),
+            "TcgaLabelsJobConfig": TcgaLabelsJobConfig.model_json_schema(),
             "InferenceJobConfig": InferenceJobConfig.model_json_schema(),
         },
         "defaults": {
@@ -178,6 +236,9 @@ def build_api_schema_payload() -> dict[str, Any]:
                 "random_state": None,
                 "use_relative_paths": True,
             },
+            "TcgaDownloadJobConfig": TcgaDownloadJobConfig().model_dump(mode="json"),
+            "TcgaManifestJobConfig": TcgaManifestJobConfig().model_dump(mode="json"),
+            "TcgaLabelsJobConfig": TcgaLabelsJobConfig().model_dump(mode="json"),
             "InferenceJobConfig": InferenceJobConfig().model_dump(mode="json"),
         },
     }
