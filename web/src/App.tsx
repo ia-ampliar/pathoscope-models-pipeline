@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { InferTab } from "./components/InferTab";
 import { SplitTab } from "./components/SplitTab";
+import { TcgaDownloadTab } from "./components/TcgaDownloadTab";
 import { TrainTab } from "./components/TrainTab";
 
-type Tab = "train" | "split" | "infer";
+type Tab = "tcga" | "train" | "split" | "infer";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("train");
@@ -15,6 +16,7 @@ export default function App() {
         <nav className="flex flex-col gap-1 text-sm">
           {(
             [
+              ["tcga", "Download TCGA"],
               ["train", "Treino"],
               ["split", "Split"],
               ["infer", "Inferência"],
@@ -33,7 +35,7 @@ export default function App() {
           ))}
         </nav>
         <p className="mt-8 text-[10px] leading-relaxed text-slate-600">
-          Dashboard dark para orquestrar treino TensorFlow, split de dados e inferência WSI/TFLite.
+          Dashboard dark para download TCGA (GDC), treino TensorFlow, split de dados e inferência WSI/TFLite.
         </p>
       </aside>
       <main className="min-w-0 flex-1 overflow-auto p-6">
@@ -43,6 +45,7 @@ export default function App() {
             Formulários espelham os parâmetros do backend; métricas em tempo real via WebSocket.
           </p>
         </header>
+        {tab === "tcga" && <TcgaDownloadTab />}
         {tab === "train" && <TrainTab />}
         {tab === "split" && <SplitTab />}
         {tab === "infer" && <InferTab />}

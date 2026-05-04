@@ -153,21 +153,59 @@ class InferenceJobConfig(BaseModel):
     min_ram_gb: float = Field(8.0, ge=0.0, description="RAM mínima (Linux /proc); 0 desativa checagem.")
 
 
+class TcgaDownloadJobConfig(BaseModel):
+    """Parâmetros alinhados a modules.tcga_dataset.download e TcgaDatasetConfig."""
+
+    root_dir: Optional[str] = Field(
+        None,
+        description="Raiz do repositório no servidor; vazio = raiz do projeto (APP).",
+    )
+    data_root: str = Field("data", description="Pasta base onde cada caso tem subpasta com .svs (relativa a root_dir).")
+    ids_csv: str = Field(
+        "tcga_case_ids.csv",
+        description="CSV de IDs de caso; sobrescrito pelo caminho do ficheiro se enviar upload.",
+    )
+    case_id_column: str = Field(
+        "case_submitter_id",
+        description="Coluna no CSV com submitter_id (ex.: TCGA-xx-xxxx); se ausente, usa a primeira coluna.",
+    )
+    wsi_manifest_csv: str = Field(
+        "wsi_manifest.csv",
+        description="Saída: manifest com image_path, case_submitter_id, file_id (relativo a root_dir).",
+    )
+    only_open_access: bool = Field(
+        True,
+        description="Se true, filtra access=open no GDC; false pode exigir GDC_TOKEN (dados controlados).",
+    )
+    gdc_files_page_size: int = Field(500, ge=1, le=10000, description="page_size da API /files do GDC.")
+    gdc_case_id_chunk_size: int = Field(40, ge=1, le=500, description="IDs por pedido no operador in em cases.submitter_id.")
+    download_timeout_sec: int = Field(3600, ge=60, le=86400, description="Timeout por ficheiro (download HTTP).")
+    max_download_retries: int = Field(3, ge=0, le=20, description="Reenvios em caso de falha de rede.")
+    download_concurrency: int = Field(4, ge=1, le=16, description="Número máximo de downloads paralelos de ficheiros SVS.")
+    gdc_token: Optional[str] = Field(
+        None,
+        description="Opcional; se vazio usa a variável de ambiente GDC_TOKEN no servidor.",
+    )
+
+
 def build_api_schema_payload() -> dict[str, Any]:
     """JSON para o frontend: schemas + grupos."""
     return {
         "version": 1,
         "groups": [
+            {"id": "tcga_download", "title": "Download WSIs (TCGA)", "description": "GDC: descarregar .svs e gerar wsi_manifest.csv"},
             {"id": "training", "title": "Treino", "description": "MobileNetV2 + fine-tune + QAT opcional"},
             {"id": "split", "title": "Split", "description": "Gerar CSVs train/val/test a partir de pastas por classe"},
             {"id": "inference", "title": "Inferência", "description": "WSI .svs + TFLite + heatmap"},
         ],
         "schemas": {
+            "TcgaDownloadJobConfig": TcgaDownloadJobConfig.model_json_schema(),
             "TrainingJobConfig": TrainingJobConfig.model_json_schema(),
             "SplitJobConfig": SplitJobConfig.model_json_schema(),
             "InferenceJobConfig": InferenceJobConfig.model_json_schema(),
         },
         "defaults": {
+            "TcgaDownloadJobConfig": TcgaDownloadJobConfig().model_dump(mode="json"),
             "TrainingJobConfig": TrainingJobConfig().model_dump(),
             "SplitJobConfig": {
                 "dataset_path": "datas",

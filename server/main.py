@@ -29,15 +29,18 @@ from server.jobs import (
     JobStatus,
     spawn_infer_worker,
     spawn_split_worker,
+    spawn_tcga_download_worker,
     spawn_train_worker,
     stop_train_job,
     wait_infer_process,
     wait_split_process,
+    wait_tcga_download_process,
     wait_train_process,
 )
 from server.schemas import (
     InferenceJobConfig,
     SplitJobConfig,
+    TcgaDownloadJobConfig,
     TrainingJobConfig,
     build_api_schema_payload,
 )
@@ -191,6 +194,64 @@ def get_split_job(job_id: str) -> dict[str, Any]:
         "job_id": job.id,
         "status": job.status.value,
         "error_message": job.error_message,
+    }
+
+
+@app.post("/api/tcga/download/jobs")
+async def create_tcga_download_job(
+    tcga_download_json: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+) -> JSONResponse:
+    tc = TcgaDownloadJobConfig.model_validate(json.loads(tcga_download_json))
+    job = registry.new_tcga_download_job()
+
+    uploads = ROOT / "server_state" / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+
+    data = tc.model_dump(mode="json")
+    if file and file.filename:
+        dest = uploads / f"{job.id}_{file.filename}"
+        with open(dest, "wb") as out:
+            shutil.copyfileobj(file.file, out)
+        data["ids_csv"] = str(dest.resolve())
+
+    result_json = ROOT / "server_state" / f"tcga_result_{job.id}.json"
+    if result_json.exists():
+        result_json.unlink()
+
+    payload = {
+        "tcga_download": data,
+        "result_json_path": str(result_json.resolve()),
+        "server_root": str(ROOT.resolve()),
+    }
+    spawn_tcga_download_worker(ROOT, job, payload)
+
+    async def _watch() -> None:
+        await wait_tcga_download_process(job, ROOT)
+
+    asyncio.create_task(_watch())
+    return JSONResponse({"job_id": job.id, "status": job.status.value})
+
+
+@app.get("/api/tcga/download/jobs/{job_id}")
+def get_tcga_download_job(job_id: str) -> dict[str, Any]:
+    job = registry.tcga_download_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job não encontrado")
+    progress: Optional[dict[str, Any]] = None
+    if job.progress_path and job.progress_path.exists():
+        try:
+            with open(job.progress_path, encoding="utf-8") as pf:
+                progress = json.load(pf)
+        except Exception:
+            progress = None
+
+    return {
+        "job_id": job.id,
+        "status": job.status.value,
+        "error_message": job.error_message,
+        "result": job.result,
+        "progress": progress,
     }
 
 

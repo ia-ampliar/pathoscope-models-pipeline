@@ -1,6 +1,6 @@
 # Control Room (Web)
 
-Interface web para orquestrar **split**, **treino** (TensorFlow) e **inferência** (WSI + TFLite), com telemetria de treino por WebSocket.
+Interface web para orquestrar **download TCGA/GDC** (WSI .svs + manifest), **split**, **treino** (TensorFlow) e **inferência** (WSI + TFLite), com telemetria de treino por WebSocket.
 
 ## Requisitos
 
@@ -32,7 +32,11 @@ O Vite em `http://localhost:5173` faz proxy de `/api` e WebSocket de treino para
 - `WebSocket /api/train/jobs/{id}/stream` — eventos `epoch`, `stage_start`, `completed`, `error`, etc.
 - `POST /api/train/jobs/{id}/stop` — encerra o subprocesso de treino.
 - `POST /api/split/jobs` — `{ "split": { ... } }`.
+- `POST /api/tcga/download/jobs` — `multipart/form-data`: `tcga_download_json` (string JSON, campos em `TcgaDownloadJobConfig` em `server/schemas.py`) e opcionalmente `file` (CSV de IDs de caso; substitui o caminho em `ids_csv`).
+- `GET /api/tcga/download/jobs/{id}` — estado do job; em conclusão, `result` contém `manifest_path`, `row_count`, `root_dir`.
 - `POST /api/inference/jobs` — `multipart/form-data`: `inference_json` (string JSON) e opcionalmente `file` (`.svs`).
+
+Para dados **controlados** no GDC, defina `GDC_TOKEN` no ambiente do servidor ou o campo opcional `gdc_token` no JSON (deixe vazio para usar só o ambiente).
 
 Artefatos e logs temporários ficam em `server_state/` (ignorado no git).
 

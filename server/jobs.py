@@ -51,12 +51,23 @@ class InferJob:
     error_message: Optional[str] = None
 
 
+@dataclass
+class TcgaDownloadJob:
+    id: str
+    status: JobStatus = JobStatus.pending
+    process: Optional[subprocess.Popen] = None
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    progress_path: Optional[Path] = None
+
+
 class JobRegistry:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.train_jobs: Dict[str, TrainJob] = {}
         self.split_jobs: Dict[str, SplitJob] = {}
         self.infer_jobs: Dict[str, InferJob] = {}
+        self.tcga_download_jobs: Dict[str, TcgaDownloadJob] = {}
         self.jobs_dir = root / "server_state"
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -76,6 +87,12 @@ class JobRegistry:
         jid = str(uuid.uuid4())
         job = InferJob(id=jid)
         self.infer_jobs[jid] = job
+        return job
+
+    def new_tcga_download_job(self) -> TcgaDownloadJob:
+        jid = str(uuid.uuid4())
+        job = TcgaDownloadJob(id=jid)
+        self.tcga_download_jobs[jid] = job
         return job
 
 
@@ -195,6 +212,49 @@ def spawn_infer_worker(root: Path, job: InferJob, payload: dict) -> None:
     )
     job.process = proc
     job.status = JobStatus.running
+
+
+def spawn_tcga_download_worker(root: Path, job: TcgaDownloadJob, payload: dict) -> None:
+    cfg_file = root / "server_state" / f"tcga_download_{job.id}.json"
+    progress_path = root / "server_state" / f"tcga_progress_{job.id}.json"
+    job.progress_path = progress_path
+    payload = {**payload, "progress_json_path": str(progress_path.resolve())}
+    with open(cfg_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(root) + os.pathsep + env.get("PYTHONPATH", "")
+
+    log_path = root / "server_state" / f"tcga_download_{job.id}.log"
+    log_f = open(log_path, "w", encoding="utf-8")
+    proc = subprocess.Popen(
+        [_python_executable(), "-m", "server.tcga_download_worker", str(cfg_file)],
+        cwd=str(root),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=log_f,
+    )
+    job.process = proc
+    job.status = JobStatus.running
+
+
+async def wait_tcga_download_process(job: TcgaDownloadJob, root: Path) -> None:
+    if job.process is None:
+        return
+    loop = asyncio.get_event_loop()
+    ret = await loop.run_in_executor(None, job.process.wait)
+    out_path = root / "server_state" / f"tcga_result_{job.id}.json"
+    if ret == 0 and out_path.exists():
+        with open(out_path, encoding="utf-8") as f:
+            job.result = json.load(f)
+        job.status = JobStatus.completed
+    else:
+        log_path = root / "server_state" / f"tcga_download_{job.id}.log"
+        err = ""
+        if log_path.exists():
+            err = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
+        job.error_message = err or f"exit {ret}"
+        job.status = JobStatus.error
 
 
 async def wait_infer_process(job: InferJob, root: Path) -> None:
