@@ -48,6 +48,7 @@ class TcgaDatasetConfig:
     gdc_files_page_size: int = 500
     download_timeout_sec: int = 3600
     max_download_retries: int = 3
+    download_concurrency: int = 4
     only_open_access: bool = True
     """Se True, filtra ``access=open`` (sem token). Se False, inclui controlados (requer ``GDC_TOKEN``)."""
 
