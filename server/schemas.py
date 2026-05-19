@@ -188,24 +188,58 @@ class TcgaDownloadJobConfig(BaseModel):
     )
 
 
+class LabelJobConfig(BaseModel):
+    """Parâmetros para cruzar manifest WSI com planilha e gerar label_file.csv."""
+
+    manifest_csv: str = Field("wsi_manifest.csv", description="CSV do manifest (saída do Download TCGA).")
+    sheets_ref: str = Field("", description="URL do Google Sheets ou caminho para CSV local com colunas Patient ID e Subtype.")
+    output_csv: Optional[str] = Field(None, description="Caminho do label_file.csv gerado; padrão split/label_file.csv.")
+    manifest_path_column: Optional[str] = Field(None, description="Coluna do manifest com caminho da imagem; padrão: image_path ou primeira coluna.")
+    patient_id_column: str = Field("Patient ID", description="Coluna do spreadsheet com ID do paciente.")
+    subtype_column: str = Field("Subtype", description="Coluna do spreadsheet com o label/subtipo.")
+
+
+class TilingJobConfig(BaseModel):
+    """Parâmetros do pipeline de tiling WSI (OpenSlide + DeepZoom + pré-processamento)."""
+
+    wsi_csv: str = Field("split/label_file.csv", description="CSV com caminhos WSI e labels (colunas wsi_path_column e label_column).")
+    processed_dataset_dir: str = Field("datas", description="Pasta de saída com subpastas por classe (entrada do Split).")
+    wsi_path_column: str = Field("Image_path", description="Coluna do CSV com caminho da WSI.")
+    label_column: str = Field("Label", description="Coluna do CSV com label/classe.")
+    tile_size: int = Field(1000, ge=64, le=4096, description="Tamanho do tile em pixels (antes de subtrair legado).")
+    overlap: int = Field(1, ge=0, le=256, description="Sobreposição entre tiles.")
+    target_magnification: int = Field(20, ge=1, le=80, description="Magnificação alvo (ex: 20 para 20x).")
+    max_white_background_fraction: float = Field(0.5, ge=0.0, le=1.0, description="Fração máxima de fundo branco por tile.")
+    blur_laplacian_threshold: float = Field(1000.0, ge=0.0, description="Variância mínima do Laplaciano (0 = desativa filtro de blur).")
+    workers: int = Field(8, ge=1, le=64, description="Workers paralelos para tiling.")
+    jpeg_quality: int = Field(90, ge=10, le=100, description="Qualidade JPEG de saída.")
+    keep_staging: bool = Field(False, description="Manter diretório temporário de staging após conclusão.")
+
+
 def build_api_schema_payload() -> dict[str, Any]:
     """JSON para o frontend: schemas + grupos."""
     return {
         "version": 1,
         "groups": [
             {"id": "tcga_download", "title": "Download WSIs (TCGA)", "description": "GDC: descarregar .svs e gerar wsi_manifest.csv"},
+            {"id": "label", "title": "Labels", "description": "Cruzar manifest com planilha para gerar label_file.csv"},
+            {"id": "tiling", "title": "Tiling", "description": "Gerar tiles de WSI organizados por classe"},
             {"id": "training", "title": "Treino", "description": "MobileNetV2 + fine-tune + QAT opcional"},
             {"id": "split", "title": "Split", "description": "Gerar CSVs train/val/test a partir de pastas por classe"},
             {"id": "inference", "title": "Inferência", "description": "WSI .svs + TFLite + heatmap"},
         ],
         "schemas": {
             "TcgaDownloadJobConfig": TcgaDownloadJobConfig.model_json_schema(),
+            "LabelJobConfig": LabelJobConfig.model_json_schema(),
+            "TilingJobConfig": TilingJobConfig.model_json_schema(),
             "TrainingJobConfig": TrainingJobConfig.model_json_schema(),
             "SplitJobConfig": SplitJobConfig.model_json_schema(),
             "InferenceJobConfig": InferenceJobConfig.model_json_schema(),
         },
         "defaults": {
             "TcgaDownloadJobConfig": TcgaDownloadJobConfig().model_dump(mode="json"),
+            "LabelJobConfig": LabelJobConfig().model_dump(mode="json"),
+            "TilingJobConfig": TilingJobConfig().model_dump(mode="json"),
             "TrainingJobConfig": TrainingJobConfig().model_dump(),
             "SplitJobConfig": {
                 "dataset_path": "datas",

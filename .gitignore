@@ -1,5 +1,6 @@
 # Datas
 /datas
+/data
 /home/ampliar/Desktop/tf_model/models/*.tflite
 
 #Output

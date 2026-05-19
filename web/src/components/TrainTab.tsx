@@ -1,53 +1,68 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchSchema, wsTrainUrl } from "../api";
-import type { ApiSchemaPayload, StreamEvent } from "../types";
+import type { ApiSchemaPayload, StepStatus, LogEntry, StreamEvent } from "../types";
+import { StageHeader } from "./StageHeader";
 import { SchemaForm } from "./SchemaForm";
-import { MetricPoint, TrainCharts } from "./TrainCharts";
+import { LogStream, makeLog } from "./LogStream";
+import { ArtifactList } from "./ArtifactRow";
+import { MetricsPanel } from "./MetricsPanel";
+import type { MetricPoint } from "./MetricsPanel";
+
+const GROUPS = [
+  { label: "Dados", keys: ["train_csv", "val_csv", "test_csv", "dataset_path", "label_csv"] },
+  { label: "Otimização", keys: ["lr_baseline", "lr_fine", "lr_qat", "batch_size", "fine_tune_percent"] },
+  { label: "Épocas", keys: ["epochs_baseline", "epochs_fine", "epochs_qat"] },
+  { label: "QAT / Augment", keys: ["use_qat", "augment", "use_weighted_loss", "target_val_loss"] },
+  { label: "Saída", keys: ["model_dir", "output_dir", "experiment_name"] },
+];
 
 function lrRisk(key: string, v: number): boolean {
-  if ((key === "lr_fine" || key === "lr_baseline" || key === "lr_qat") && v > 1e-3) return true;
-  return false;
+  return (key === "lr_fine" || key === "lr_baseline" || key === "lr_qat") && v > 1e-3;
 }
 
-export function TrainTab() {
+type Props = { inspectorMode: boolean; onStatusChange: (s: StepStatus) => void };
+
+export function TrainTab({ inspectorMode, onStatusChange }: Props) {
   const [schemaPayload, setSchemaPayload] = useState<ApiSchemaPayload | null>(null);
   const [training, setTraining] = useState<Record<string, unknown>>({});
   const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<string>("idle");
+  const [status, setStatus] = useState("idle");
+  const [epochInfo, setEpochInfo] = useState<string | undefined>(undefined);
   const [points, setPoints] = useState<MetricPoint[]>([]);
-  const [overfitBadge, setOverfitBadge] = useState(false);
   const [pulse, setPulse] = useState(false);
   const [completedInfo, setCompletedInfo] = useState<Record<string, string> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [log, setLog] = useState<string[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+
+  const addLog = (level: LogEntry["level"], msg: string) =>
+    setLogs((p) => [...p.slice(-200), makeLog(level, msg)]);
 
   useEffect(() => {
     fetchSchema()
-      .then((p) => {
-        setSchemaPayload(p);
-        setTraining({ ...p.defaults.TrainingJobConfig });
-      })
-      .catch((e) => setError(String(e)));
+      .then((p) => { setSchemaPayload(p); setTraining({ ...p.defaults.TrainingJobConfig }); })
+      .catch((e) => setErr(String(e)));
   }, []);
 
-  const trainSchema = useMemo(() => {
-    const s = schemaPayload?.schemas?.TrainingJobConfig as Record<string, unknown> | undefined;
-    return s || {};
-  }, [schemaPayload]);
+  const trainSchema = useMemo(
+    () => (schemaPayload?.schemas?.TrainingJobConfig as Record<string, unknown> | undefined) || {},
+    [schemaPayload]
+  );
 
   useEffect(() => {
     if (!jobId) return;
-    const url = wsTrainUrl(jobId);
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(wsTrainUrl(jobId));
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data as string) as StreamEvent;
-        if (msg.type === "epoch") {
+        if (msg.type === "stage_start") {
+          setEpochInfo(`${msg.stage}`);
+          addLog("INFO", `Fase iniciada: ${msg.stage}`);
+        } else if (msg.type === "epoch") {
           const w = Boolean(msg.warning);
-          setOverfitBadge(w);
-          setPoints((prev) => {
-            const m = msg.metrics;
-            const next: MetricPoint = {
+          const m = msg.metrics;
+          setPoints((prev) => [
+            ...prev,
+            {
               idx: prev.length,
               stage: msg.stage,
               epoch: msg.epoch,
@@ -56,131 +71,130 @@ export function TrainTab() {
               acc: m.accuracy,
               val_acc: m.val_accuracy,
               warn: w,
-            };
-            return [...prev, next];
-          });
+            },
+          ]);
+          setEpochInfo(`${msg.stage} · epoch ${msg.epoch}`);
+          if (w) addLog("WARN", `Overfitting detectado (epoch ${msg.epoch}) · val_loss: ${m.val_loss?.toFixed(4)}`);
         } else if (msg.type === "target_val_loss_check" && msg.hit) {
           setPulse(true);
-          setLog((prev) => [
-            ...prev.slice(-80),
-            `Meta val_loss atingida (melhor ${msg.best_val_loss.toFixed(4)} ≤ ${msg.target_val_loss})`,
-          ]);
-        } else if (msg.type === "completed") {
-          setCompletedInfo({
-            best_fp32: msg.best_fp32_model || "",
-            tflite: msg.tflite || "",
-            baseline: msg.baseline_final || "",
-          });
-          setJobStatus("completed");
-        } else if (msg.type === "error") {
-          setError(msg.message);
-          setJobStatus("error");
-        } else if (msg.type === "stream_end") {
-          setJobStatus(msg.status);
+          addLog("INFO", `Meta val_loss atingida: ${msg.best_val_loss.toFixed(4)} ≤ ${msg.target_val_loss}`);
         } else if (msg.type === "test_eval") {
-          setLog((prev) => [
-            ...prev.slice(-80),
-            `Teste: loss=${msg.test_loss.toFixed(4)} acc=${msg.test_accuracy.toFixed(4)}`,
-          ]);
+          addLog("INFO", `Teste: loss=${msg.test_loss.toFixed(4)} · acc=${msg.test_accuracy.toFixed(4)}`);
+        } else if (msg.type === "completed") {
+          const info: Record<string, string> = {};
+          if (msg.best_fp32_model) info.best_fp32 = msg.best_fp32_model;
+          if (msg.baseline_final) info.baseline = msg.baseline_final;
+          if (msg.tflite) info.tflite = msg.tflite;
+          setCompletedInfo(info);
+          setStatus("completed");
+          onStatusChange("done");
+          addLog("INFO", "Treinamento concluído.");
+        } else if (msg.type === "error") {
+          setErr(msg.message);
+          setStatus("error");
+          onStatusChange("error");
+          addLog("ERROR", msg.message);
+        } else if (msg.type === "stream_end") {
+          setStatus(msg.status);
+          if (msg.status !== "completed") onStatusChange("error");
         }
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
     };
-    ws.onerror = () => setLog((prev) => [...prev.slice(-80), "WebSocket erro"]);
+    ws.onerror = () => addLog("ERROR", "WebSocket: erro de conexão");
     return () => ws.close();
   }, [jobId]);
 
   const startTrain = async () => {
-    setError(null);
-    setPoints([]);
-    setOverfitBadge(false);
-    setPulse(false);
-    setCompletedInfo(null);
-    setJobStatus("loading");
-    const body = { training };
+    setErr(null); setPoints([]); setLogs([]); setPulse(false);
+    setCompletedInfo(null); setEpochInfo(undefined);
+    setStatus("loading");
+    onStatusChange("running");
+    addLog("INFO", "Iniciando treinamento…");
     const r = await fetch("/api/train/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ training }),
     });
     if (!r.ok) {
-      setJobStatus("error");
-      setError(await r.text());
+      const msg = await r.text();
+      setStatus("error"); setErr(msg);
+      onStatusChange("error"); addLog("ERROR", msg);
       return;
     }
-    const j = (await r.json()) as { job_id: string; status: string };
-    setJobId(j.job_id);
-    setJobStatus("running");
+    const j = (await r.json()) as { job_id: string };
+    setJobId(j.job_id); setStatus("running");
+    addLog("INFO", `Job criado: ${j.job_id}`);
   };
 
   const stopTrain = async () => {
     if (!jobId) return;
-    setJobStatus("stopping");
+    setStatus("stopping");
+    addLog("WARN", "Interrompendo treinamento…");
     const r = await fetch(`/api/train/jobs/${jobId}/stop`, { method: "POST" });
     if (r.ok) {
       const j = (await r.json()) as { status: string };
-      setJobStatus(j.status);
+      setStatus(j.status);
     }
   };
 
+  const artifacts = completedInfo
+    ? [
+        ...(completedInfo.baseline
+          ? [{ name: "baseline_checkpoint_final.keras", path: completedInfo.baseline, type: "model" as const }]
+          : []),
+        ...(completedInfo.best_fp32
+          ? [{ name: "fine_tuned_checkpoint_final.keras", path: completedInfo.best_fp32, type: "model" as const }]
+          : []),
+        ...(completedInfo.tflite
+          ? [{ name: "qat_baseline_final.tflite", path: completedInfo.tflite, type: "tflite" as const }]
+          : []),
+      ]
+    : [];
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid gap-6 lg:grid-cols-[minmax(280px,360px)_1fr]">
-        <aside className="rounded-xl border border-slate-800 bg-surface/80 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-accent">Configuração de treino</h2>
+    <div className="p-6">
+      <StageHeader
+        title="Treino"
+        description="MobileNetV2 com baseline → fine-tune → QAT, overfitting detection e target val_loss automático."
+        status={status}
+        jobId={jobId}
+        phase={epochInfo}
+        onRun={startTrain}
+        onAbort={stopTrain}
+        runDisabled={status === "running" || status === "loading"}
+        abortDisabled={status !== "running"}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[300px_1fr_300px] lg:grid-cols-[300px_1fr]">
+        {/* Params */}
+        <div>
           {schemaPayload && (
             <SchemaForm
               schemaRoot={trainSchema as never}
               values={training}
               onChange={setTraining}
               lrRiskCheck={lrRisk}
+              groups={GROUPS}
+              inspectorMode={inspectorMode}
             />
           )}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={jobStatus === "running" || jobStatus === "loading"}
-              onClick={startTrain}
-              className="rounded-lg bg-accent/90 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-accent disabled:opacity-40"
-            >
-              {jobStatus === "loading" ? "Iniciando…" : "Iniciar treinamento"}
-            </button>
-            <button
-              type="button"
-              disabled={jobStatus !== "running"}
-              onClick={stopTrain}
-              className="rounded-lg border border-danger/60 px-4 py-2 text-sm text-danger hover:bg-danger/10 disabled:opacity-40"
-            >
-              Interromper
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">Estado: {jobStatus}</p>
-          {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-          {overfitBadge && (
-            <p className="mt-2 rounded border border-warn/50 bg-warn/10 px-2 py-1 text-xs text-warn">
-              Atenção: val_loss muito acima de train (possível overfitting).
+        </div>
+
+        {/* Metrics */}
+        <div>
+          <MetricsPanel data={points} pulse={pulse} />
+        </div>
+
+        {/* Logs + Artifacts */}
+        <div className="space-y-3">
+          <LogStream entries={logs} />
+          <ArtifactList title="Modelos gerados" artifacts={artifacts} />
+          {err && (
+            <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 font-mono text-[11px] text-danger">
+              {err}
             </p>
           )}
-        </aside>
-        <section className="min-w-0 space-y-3">
-          <TrainCharts data={points} pulse={pulse} />
-          {completedInfo && (
-            <div className="rounded-lg border border-ok/40 bg-ok/5 p-3 text-sm text-slate-300">
-              <div className="font-medium text-ok">Melhores pesos / artefatos</div>
-              <ul className="mt-2 list-inside list-disc text-xs text-slate-400">
-                {completedInfo.best_fp32 && <li>FP32: {completedInfo.best_fp32}</li>}
-                {completedInfo.baseline && <li>Baseline: {completedInfo.baseline}</li>}
-                {completedInfo.tflite && <li>TFLite: {completedInfo.tflite}</li>}
-              </ul>
-            </div>
-          )}
-          <div className="rounded-lg border border-slate-800 bg-surface/40 p-3 font-mono text-[11px] text-slate-500">
-            {log.map((l, i) => (
-              <div key={i}>{l}</div>
-            ))}
-          </div>
-        </section>
+        </div>
       </div>
     </div>
   );

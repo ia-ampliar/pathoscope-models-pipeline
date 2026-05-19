@@ -28,19 +28,25 @@ from server.jobs import (
     JobRegistry,
     JobStatus,
     spawn_infer_worker,
+    spawn_label_worker,
     spawn_split_worker,
     spawn_tcga_download_worker,
+    spawn_tiling_worker,
     spawn_train_worker,
     stop_train_job,
     wait_infer_process,
+    wait_label_process,
     wait_split_process,
     wait_tcga_download_process,
+    wait_tiling_process,
     wait_train_process,
 )
 from server.schemas import (
     InferenceJobConfig,
+    LabelJobConfig,
     SplitJobConfig,
     TcgaDownloadJobConfig,
+    TilingJobConfig,
     TrainingJobConfig,
     build_api_schema_payload,
 )
@@ -66,6 +72,16 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/filesystem/check")
+def filesystem_check(path: str) -> dict[str, bool]:
+    target = (ROOT / path).resolve()
+    try:
+        target.relative_to(ROOT)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path fora do root")
+    return {"exists": target.exists(), "is_dir": target.is_dir()}
+
+
 @app.get("/api/schema")
 def api_schema() -> dict[str, Any]:
     return build_api_schema_payload()
@@ -77,6 +93,14 @@ class TrainJobRequest(BaseModel):
 
 class SplitJobRequest(BaseModel):
     split: SplitJobConfig
+
+
+class LabelJobRequest(BaseModel):
+    label: LabelJobConfig
+
+
+class TilingJobRequest(BaseModel):
+    tiling: TilingJobConfig
 
 
 @app.post("/api/train/jobs")
@@ -188,6 +212,56 @@ async def create_split_job(body: SplitJobRequest) -> JSONResponse:
 @app.get("/api/split/jobs/{job_id}")
 def get_split_job(job_id: str) -> dict[str, Any]:
     job = registry.split_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job não encontrado")
+    return {
+        "job_id": job.id,
+        "status": job.status.value,
+        "error_message": job.error_message,
+    }
+
+
+@app.post("/api/label/jobs")
+async def create_label_job(body: LabelJobRequest) -> JSONResponse:
+    cfg = body.label
+    job = registry.new_label_job()
+    spawn_label_worker(ROOT, job, cfg.model_dump(mode="json"))
+
+    async def _watch() -> None:
+        await wait_label_process(job, ROOT)
+
+    asyncio.create_task(_watch())
+    return JSONResponse({"job_id": job.id, "status": job.status.value})
+
+
+@app.get("/api/label/jobs/{job_id}")
+def get_label_job(job_id: str) -> dict[str, Any]:
+    job = registry.label_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job não encontrado")
+    return {
+        "job_id": job.id,
+        "status": job.status.value,
+        "error_message": job.error_message,
+    }
+
+
+@app.post("/api/tiling/jobs")
+async def create_tiling_job(body: TilingJobRequest) -> JSONResponse:
+    cfg = body.tiling
+    job = registry.new_tiling_job()
+    spawn_tiling_worker(ROOT, job, cfg.model_dump(mode="json"))
+
+    async def _watch() -> None:
+        await wait_tiling_process(job, ROOT)
+
+    asyncio.create_task(_watch())
+    return JSONResponse({"job_id": job.id, "status": job.status.value})
+
+
+@app.get("/api/tiling/jobs/{job_id}")
+def get_tiling_job(job_id: str) -> dict[str, Any]:
+    job = registry.tiling_jobs.get(job_id)
     if not job:
         raise HTTPException(404, "Job não encontrado")
     return {

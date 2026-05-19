@@ -7,39 +7,54 @@ import { LogStream, makeLog } from "./LogStream";
 import { ArtifactList } from "./ArtifactRow";
 
 const GROUPS = [
-  { label: "Principal", keys: ["dataset_path", "test_size", "val_size"] },
-  { label: "Avançado", keys: ["output_dir", "image_root", "random_state", "use_relative_paths"] },
+  { label: "Entrada / Saída", keys: ["wsi_csv", "processed_dataset_dir", "wsi_path_column", "label_column"] },
+  { label: "Extração", keys: ["tile_size", "target_magnification", "overlap"] },
+  { label: "Qualidade", keys: ["max_white_background_fraction", "blur_laplacian_threshold", "jpeg_quality"] },
+  { label: "Performance", keys: ["workers", "keep_staging"] },
 ];
 
 type Props = { inspectorMode: boolean; onStatusChange: (s: StepStatus) => void };
 
-export function SplitTab({ inspectorMode, onStatusChange }: Props) {
+export function TilingTab({ inspectorMode, onStatusChange }: Props) {
   const [schemaPayload, setSchemaPayload] = useState<ApiSchemaPayload | null>(null);
-  const [split, setSplit] = useState<Record<string, unknown>>({});
+  const [tiling, setTiling] = useState<Record<string, unknown>>({});
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState("idle");
   const [err, setErr] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [existingDir, setExistingDir] = useState<string | null>(null);
 
   const addLog = (level: LogEntry["level"], msg: string) =>
     setLogs((p) => [...p.slice(-200), makeLog(level, msg)]);
 
   useEffect(() => {
     fetchSchema()
-      .then((p) => { setSchemaPayload(p); setSplit({ ...p.defaults.SplitJobConfig }); })
+      .then((p) => { setSchemaPayload(p); setTiling({ ...p.defaults.TilingJobConfig }); })
       .catch((e) => setErr(String(e)));
   }, []);
 
-  const sch = useMemo(() => schemaPayload?.schemas?.SplitJobConfig || {}, [schemaPayload]);
+  // Auto-detect existing output directory on the server
+  useEffect(() => {
+    const dir = typeof tiling.processed_dataset_dir === "string" && tiling.processed_dataset_dir
+      ? tiling.processed_dataset_dir : "datas";
+    fetch(`/api/filesystem/check?path=${encodeURIComponent(dir)}`)
+      .then((r) => r.json())
+      .then((d: { exists: boolean; is_dir: boolean }) => {
+        setExistingDir(d.exists && d.is_dir ? dir : null);
+      })
+      .catch(() => {});
+  }, [tiling.processed_dataset_dir]);
+
+  const sch = useMemo(() => schemaPayload?.schemas?.TilingJobConfig || {}, [schemaPayload]);
 
   const run = async () => {
     setErr(null); setLogs([]); setStatus("loading");
     onStatusChange("running");
-    addLog("INFO", "Gerando splits…");
-    const r = await fetch("/api/split/jobs", {
+    addLog("INFO", "Iniciando tiling WSI…");
+    const r = await fetch("/api/tiling/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ split }),
+      body: JSON.stringify({ tiling }),
     });
     if (!r.ok) {
       const msg = await r.text();
@@ -51,33 +66,35 @@ export function SplitTab({ inspectorMode, onStatusChange }: Props) {
     setJobId(j.job_id); setStatus("running");
     addLog("INFO", `Job criado: ${j.job_id}`);
     const poll = setInterval(async () => {
-      const s = await fetch(`/api/split/jobs/${j.job_id}`);
+      const s = await fetch(`/api/tiling/jobs/${j.job_id}`);
       if (!s.ok) return;
       const d = (await s.json()) as { status: string; error_message?: string };
       setStatus(d.status);
       if (d.error_message) { setErr(d.error_message); addLog("ERROR", d.error_message); }
       if (d.status === "completed") {
         onStatusChange("done");
-        addLog("INFO", "CSVs gerados: train_data.csv, val_data.csv, test_data.csv");
+        addLog("INFO", `Tiles gravados em: ${tiling.processed_dataset_dir ?? "datas/"}`);
         clearInterval(poll);
       }
       if (d.status === "error") { onStatusChange("error"); clearInterval(poll); }
     }, 800);
   };
 
-  const outDir = typeof split.output_dir === "string" && split.output_dir ? split.output_dir : "split";
+  const outDir = typeof tiling.processed_dataset_dir === "string" && tiling.processed_dataset_dir
+    ? tiling.processed_dataset_dir : "datas";
 
-  const artifacts = status === "completed" ? [
-    { name: "train_data.csv", path: `${outDir}/train_data.csv`, type: "csv" as const },
-    { name: "val_data.csv",   path: `${outDir}/val_data.csv`,   type: "csv" as const },
-    { name: "test_data.csv",  path: `${outDir}/test_data.csv`,  type: "csv" as const },
-  ] : [];
+  const artifacts = [
+    ...(existingDir ? [{ name: existingDir + "/", path: existingDir, type: "generic" as const }] : []),
+    ...(status === "completed" && outDir !== existingDir
+      ? [{ name: outDir + "/", path: outDir, type: "generic" as const }]
+      : []),
+  ];
 
   return (
     <div className="p-6">
       <StageHeader
-        title="Split"
-        description="Divide o dataset de patches em conjuntos de treino, validação e teste (stratified split por classe)."
+        title="Tiling WSI"
+        description="Extrai patches de WSIs (.svs) via OpenSlide + DeepZoom, aplica Macenko e organiza por classe em subpastas."
         status={status}
         jobId={jobId}
         onRun={run}
@@ -88,8 +105,8 @@ export function SplitTab({ inspectorMode, onStatusChange }: Props) {
           {schemaPayload && (
             <SchemaForm
               schemaRoot={sch as never}
-              values={split}
-              onChange={setSplit}
+              values={tiling}
+              onChange={setTiling}
               groups={GROUPS}
               inspectorMode={inspectorMode}
             />
@@ -97,7 +114,7 @@ export function SplitTab({ inspectorMode, onStatusChange }: Props) {
         </div>
         <div className="space-y-3">
           <LogStream entries={logs} />
-          <ArtifactList title="CSVs gerados" artifacts={artifacts} />
+          <ArtifactList title="Artefatos" artifacts={artifacts} />
           {err && <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 font-mono text-[11px] text-danger">{err}</p>}
         </div>
       </div>

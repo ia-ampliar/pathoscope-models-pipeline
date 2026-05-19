@@ -24,3 +24,20 @@ export type StreamEvent =
   | { type: "completed"; best_fp32_model?: string; baseline_final?: string; tflite?: string }
   | { type: "error"; message: string }
   | { type: "stream_end"; status: string };
+
+export type StepId = "tcga" | "label" | "tiling" | "split" | "train" | "infer";
+
+export type StepStatus = "locked" | "available" | "running" | "done" | "error";
+
+export type StepState = Record<StepId, StepStatus>;
+
+export type LogLevel = "INFO" | "WARN" | "ERROR" | "DEBUG";
+
+export type LogEntry = {
+  id: number;
+  time: Date;
+  level: LogLevel;
+  message: string;
+};
+
+export type InspectorMode = "operator" | "inspector";

@@ -61,6 +61,22 @@ class TcgaDownloadJob:
     progress_path: Optional[Path] = None
 
 
+@dataclass
+class LabelJob:
+    id: str
+    status: JobStatus = JobStatus.pending
+    process: Optional[subprocess.Popen] = None
+    error_message: Optional[str] = None
+
+
+@dataclass
+class TilingJob:
+    id: str
+    status: JobStatus = JobStatus.pending
+    process: Optional[subprocess.Popen] = None
+    error_message: Optional[str] = None
+
+
 class JobRegistry:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -68,6 +84,8 @@ class JobRegistry:
         self.split_jobs: Dict[str, SplitJob] = {}
         self.infer_jobs: Dict[str, InferJob] = {}
         self.tcga_download_jobs: Dict[str, TcgaDownloadJob] = {}
+        self.label_jobs: Dict[str, LabelJob] = {}
+        self.tiling_jobs: Dict[str, TilingJob] = {}
         self.jobs_dir = root / "server_state"
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -93,6 +111,18 @@ class JobRegistry:
         jid = str(uuid.uuid4())
         job = TcgaDownloadJob(id=jid)
         self.tcga_download_jobs[jid] = job
+        return job
+
+    def new_label_job(self) -> LabelJob:
+        jid = str(uuid.uuid4())
+        job = LabelJob(id=jid)
+        self.label_jobs[jid] = job
+        return job
+
+    def new_tiling_job(self) -> TilingJob:
+        jid = str(uuid.uuid4())
+        job = TilingJob(id=jid)
+        self.tiling_jobs[jid] = job
         return job
 
 
@@ -274,3 +304,77 @@ async def wait_infer_process(job: InferJob, root: Path) -> None:
             err = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
         job.error_message = err or f"exit {ret}"
         job.status = JobStatus.error
+
+
+def spawn_label_worker(root: Path, job: LabelJob, payload: dict) -> None:
+    cfg_file = root / "server_state" / f"label_{job.id}.json"
+    with open(cfg_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(root) + os.pathsep + env.get("PYTHONPATH", "")
+
+    log_path = root / "server_state" / f"label_{job.id}.log"
+    log_f = open(log_path, "w", encoding="utf-8")
+    proc = subprocess.Popen(
+        [_python_executable(), "-m", "server.label_worker", str(cfg_file)],
+        cwd=str(root),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=log_f,
+    )
+    job.process = proc
+    job.status = JobStatus.running
+
+
+async def wait_label_process(job: LabelJob, root: Path) -> None:
+    if job.process is None:
+        return
+    loop = asyncio.get_event_loop()
+    ret = await loop.run_in_executor(None, job.process.wait)
+    if ret != 0:
+        log_path = root / "server_state" / f"label_{job.id}.log"
+        err = ""
+        if log_path.exists():
+            err = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
+        job.error_message = err or f"exit {ret}"
+        job.status = JobStatus.error
+    else:
+        job.status = JobStatus.completed
+
+
+def spawn_tiling_worker(root: Path, job: TilingJob, payload: dict) -> None:
+    cfg_file = root / "server_state" / f"tiling_{job.id}.json"
+    with open(cfg_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(root) + os.pathsep + env.get("PYTHONPATH", "")
+
+    log_path = root / "server_state" / f"tiling_{job.id}.log"
+    log_f = open(log_path, "w", encoding="utf-8")
+    proc = subprocess.Popen(
+        [_python_executable(), "-m", "server.tiling_worker", str(cfg_file)],
+        cwd=str(root),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=log_f,
+    )
+    job.process = proc
+    job.status = JobStatus.running
+
+
+async def wait_tiling_process(job: TilingJob, root: Path) -> None:
+    if job.process is None:
+        return
+    loop = asyncio.get_event_loop()
+    ret = await loop.run_in_executor(None, job.process.wait)
+    if ret != 0:
+        log_path = root / "server_state" / f"tiling_{job.id}.log"
+        err = ""
+        if log_path.exists():
+            err = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
+        job.error_message = err or f"exit {ret}"
+        job.status = JobStatus.error
+    else:
+        job.status = JobStatus.completed
